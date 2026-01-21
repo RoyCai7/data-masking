@@ -4,8 +4,11 @@ FastAPI backend with 16-thread concurrent processing
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from app.api import mask, status
 from app.core.executor import shutdown_executor
@@ -13,9 +16,12 @@ from app.core.executor import shutdown_executor
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Frontend dist path
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "../../frontend/dist")
 
 
 @asynccontextmanager
@@ -39,7 +45,7 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,16 +56,6 @@ app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])
 app.include_router(status.router, prefix="/api/v1", tags=["Status"])
 
 
-@app.get("/", tags=["Health"])
-async def root():
-    """Health check endpoint"""
-    return {
-        "service": "SUSE Data Masking Service",
-        "version": "1.0.0",
-        "status": "healthy"
-    }
-
-
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Detailed health check"""
@@ -68,3 +64,16 @@ async def health_check():
         "status": "healthy",
         "executor": get_executor_status()
     }
+
+
+# Mount static files for frontend
+if os.path.exists(FRONTEND_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve SPA for all other routes"""
+        file_path = os.path.join(FRONTEND_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
