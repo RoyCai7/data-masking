@@ -21,7 +21,6 @@ class MaskingRule:
     """Definition of a masking rule"""
     id: str
     name: str
-    name_zh: str
     pattern: Pattern
     strategy: MaskStrategy
     placeholder: str
@@ -49,7 +48,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="ipv4",
         name="IPv4 Address",
-        name_zh="IPv4 地址",
         pattern=re.compile(r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[IPv4]",
@@ -58,7 +56,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="ipv6",
         name="IPv6 Address",
-        name_zh="IPv6 地址",
         pattern=re.compile(r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b|\b(?:[0-9a-fA-F]{1,4}:){1,7}:|\b(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}\b'),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[IPv6]",
@@ -67,7 +64,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="mac",
         name="MAC Address",
-        name_zh="MAC 地址",
         pattern=re.compile(r'\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b'),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[MAC]",
@@ -76,7 +72,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="email",
         name="Email Address",
-        name_zh="邮箱地址",
         pattern=re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[EMAIL]",
@@ -85,7 +80,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="path_user",
         name="Path Username",
-        name_zh="路径用户名",
         pattern=re.compile(r'/home/([a-zA-Z0-9_-]+)'),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="/home/[USER]",
@@ -94,7 +88,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="license",
         name="License Key",
-        name_zh="License Key",
         pattern=re.compile(r'\b[A-Z0-9]{4,5}(?:-[A-Z0-9]{4,5}){2,}\b'),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[LICENSE]",
@@ -103,7 +96,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="hostname",
         name="Hostname",
-        name_zh="主机名",
         pattern=re.compile(r'\b(?:sles?|suse|linux|server|host|node|vm|container)[-_]?[a-zA-Z0-9]+[-_]?[a-zA-Z0-9]*\b', re.IGNORECASE),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[HOSTNAME]",
@@ -112,7 +104,6 @@ MASKING_RULES: List[MaskingRule] = [
     MaskingRule(
         id="username",
         name="Username Pattern",
-        name_zh="用户名",
         pattern=re.compile(r'\b(?:user|admin|root|operator)[=:\s]+([a-zA-Z0-9_-]+)\b', re.IGNORECASE),
         strategy=MaskStrategy.PLACEHOLDER,
         placeholder="[USERNAME]",
@@ -140,7 +131,6 @@ def get_rules_info() -> List[dict]:
         {
             "id": rule.id,
             "name": rule.name,
-            "name_zh": rule.name_zh,
             "enabled": rule.enabled,
             "weight": rule.weight
         }

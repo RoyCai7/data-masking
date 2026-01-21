@@ -54,7 +54,6 @@ export interface TaskInfo {
 export interface ReportBreakdown {
   rule_id: string;
   rule_name: string;
-  rule_name_zh: string;
   matches: number;
   examples: Array<{
     line: number;
@@ -84,7 +83,6 @@ export interface MaskingReport {
 export interface MaskingRule {
   id: string;
   name: string;
-  name_zh: string;
   enabled: boolean;
   weight: number;
 }

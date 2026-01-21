@@ -37,7 +37,6 @@ class RuleStats:
     """Statistics for a single rule"""
     rule_id: str
     rule_name: str
-    rule_name_zh: str
     matches: int = 0
     examples: List[Dict] = field(default_factory=list)
     
@@ -103,8 +102,7 @@ class MaskingEngine:
         stats_map: Dict[str, RuleStats] = {
             rule.id: RuleStats(
                 rule_id=rule.id,
-                rule_name=rule.name,
-                rule_name_zh=rule.name_zh
+                rule_name=rule.name
             )
             for rule in rules
         }
@@ -396,8 +394,7 @@ class MaskingEngine:
             all_stats: Dict[str, RuleStats] = {
                 rule.id: RuleStats(
                     rule_id=rule.id,
-                    rule_name=rule.name,
-                    rule_name_zh=rule.name_zh
+                    rule_name=rule.name
                 )
                 for rule in rules
             }

@@ -136,7 +136,7 @@ export default function ResultView({ task, report, onBack, isLoading }: ResultVi
                 <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
                   <span>{formatFileSize(report.file_info.size_bytes)}</span>
                   <span>•</span>
-                  <span>{report.file_info.lines_total.toLocaleString()} 行</span>
+                  <span>{report.file_info.lines_total.toLocaleString()} lines</span>
                   <span>•</span>
                   <span className="flex items-center">
                     <ClockIcon className="w-4 h-4 mr-1" />
@@ -228,7 +228,7 @@ export default function ResultView({ task, report, onBack, isLoading }: ResultVi
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={report.breakdown.map(b => ({
-                  name: b.rule_name_zh,
+                  name: b.rule_name,
                   value: b.matches
                 }))}
                 layout="vertical"
@@ -264,8 +264,8 @@ export default function ResultView({ task, report, onBack, isLoading }: ResultVi
             {report.breakdown.filter(b => b.examples.length > 0).map((rule) => (
               <div key={rule.rule_id} className="border border-gray-200 rounded-xl overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                  <span className="font-medium text-gray-700">{rule.rule_name_zh}</span>
-                  <span className="ml-2 text-sm text-gray-500">({rule.matches} 处)</span>
+                  <span className="font-medium text-gray-700">{rule.rule_name}</span>
+                  <span className="ml-2 text-sm text-gray-500">({rule.matches} matches)</span>
                 </div>
                 
                 <div className="divide-y divide-gray-100">

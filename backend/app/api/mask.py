@@ -184,7 +184,6 @@ async def process_masking_task(
                 {
                     "rule_id": stats.rule_id,
                     "rule_name": stats.rule_name,
-                    "rule_name_zh": stats.rule_name_zh,
                     "matches": stats.matches,
                     "examples": stats.examples
                 }
