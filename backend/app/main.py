@@ -2,7 +2,7 @@
 SUSE Data Masking Service - Main Application
 FastAPI backend with 16-thread concurrent processing
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -51,7 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers FIRST (before catch-all)
 app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])
 app.include_router(status.router, prefix="/api/v1", tags=["Status"])
 
@@ -66,14 +66,28 @@ async def health_check():
     }
 
 
-# Mount static files for frontend
+# Serve frontend static files
 if os.path.exists(FRONTEND_DIR):
+    # Mount assets directory
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+
+
+# Catch-all route for SPA - must be defined AFTER all other routes
+@app.api_route("/{full_path:path}", methods=["GET"], include_in_schema=False)
+async def serve_spa(request: Request, full_path: str):
+    """Serve SPA for all other routes (excluding /api/*)"""
+    # Skip API routes
+    if full_path.startswith("api/"):
+        return {"detail": "Not Found"}
     
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        """Serve SPA for all other routes"""
-        file_path = os.path.join(FRONTEND_DIR, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    # Check if file exists in frontend dist
+    file_path = os.path.join(FRONTEND_DIR, full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    
+    # Return index.html for SPA routing
+    index_path = os.path.join(FRONTEND_DIR, "index.html")
+    if os.path.isfile(index_path):
+        return FileResponse(index_path)
+    
+    return {"detail": "Not Found"}
