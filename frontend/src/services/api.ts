@@ -2,11 +2,25 @@ import axios from 'axios';
 
 const API_BASE = '/api/v1';
 
+// Generate UUID (compatible with non-HTTPS environments)
+const generateUUID = (): string => {
+  // Use crypto.randomUUID if available (HTTPS only)
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // Fallback for HTTP environments
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 // Get or create session ID
 const getSessionId = (): string => {
   let sessionId = localStorage.getItem('masking-session-id');
   if (!sessionId) {
-    sessionId = crypto.randomUUID();
+    sessionId = generateUUID();
     localStorage.setItem('masking-session-id', sessionId);
   }
   return sessionId;
