@@ -55,7 +55,7 @@ export default function Header() {
             )}
             
             <a
-              href="/api/v1/status"
+              href="/docs"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-suse-green-light hover:text-white transition-colors"
