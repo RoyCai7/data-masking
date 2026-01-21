@@ -57,18 +57,14 @@ class TaskStatusResponse(BaseModel):
     report: Optional[dict]
 
 
-@router.post("/mask", response_model=MaskResponse)
+@router.post("/mask", response_model=MaskResponse, summary="Upload and mask a file")
 async def mask_file(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    whitelist: Optional[str] = Form(default=""),
-    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID")
+    file: UploadFile = File(..., description="File to mask"),
+    whitelist: Optional[str] = Form(default="", description="Comma-separated whitelist"),
+    x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="Session ID")
 ):
-    """
-    Upload and mask a file
-    Supports: text files (.txt, .log, .json, etc.) and archives (.tgz, .tar.gz, .zip, etc.)
-    Returns a task ID to track progress
-    """
+    """Upload a file for masking. Supports text files and archives (.tgz, .zip, etc.)"""
     filename = file.filename.lower()
     
     # Check if archive file
@@ -224,12 +220,12 @@ async def process_masking_task(
             pass
 
 
-@router.get("/task/{task_id}", response_model=TaskStatusResponse)
+@router.get("/task/{task_id}", response_model=TaskStatusResponse, summary="Get task status")
 async def get_task_status(
     task_id: str,
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID")
 ):
-    """Get task status (only accessible by the session owner)"""
+    """Get task processing status"""
     if not x_session_id:
         raise HTTPException(status_code=401, detail="Session ID required")
     
@@ -249,11 +245,11 @@ async def get_task_status(
     )
 
 
-@router.get("/tasks")
+@router.get("/tasks", summary="List all tasks")
 async def list_tasks(
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID")
 ):
-    """List all tasks for the current session (only user's own tasks)"""
+    """List all tasks in current session"""
     if not x_session_id:
         raise HTTPException(status_code=401, detail="Session ID required")
     
@@ -276,12 +272,12 @@ async def list_tasks(
     }
 
 
-@router.get("/download/{task_id}")
+@router.get("/download/{task_id}", summary="Download masked file")
 async def download_masked_file(
     task_id: str,
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID")
 ):
-    """Download the masked file (only accessible by the session owner)"""
+    """Download the masked file"""
     if not x_session_id:
         raise HTTPException(status_code=401, detail="Session ID required")
     
@@ -319,12 +315,12 @@ async def download_masked_file(
     )
 
 
-@router.get("/report/{task_id}")
+@router.get("/report/{task_id}", summary="Get masking report")
 async def get_report(
     task_id: str,
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID")
 ):
-    """Get the masking report (only accessible by the session owner)"""
+    """Get detailed masking report"""
     if not x_session_id:
         raise HTTPException(status_code=401, detail="Session ID required")
     
@@ -341,9 +337,9 @@ async def get_report(
     return task.report
 
 
-@router.get("/rules")
+@router.get("/rules", summary="List masking rules")
 async def list_rules():
-    """Get all available masking rules"""
+    """Get available masking rules"""
     return {
         "rules": get_rules_info()
     }

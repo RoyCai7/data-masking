@@ -36,10 +36,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SUSE Data Masking Service",
-    description="一站式数据脱敏服务，支持网页上传和 REST API",
+    title="Data Masking API",
+    description="Mask sensitive data in text files and archives",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {"name": "Masking", "description": "File upload and masking"},
+        {"name": "Status", "description": "Service status"},
+    ]
 )
 
 # CORS configuration
@@ -54,16 +60,6 @@ app.add_middleware(
 # Include routers FIRST (before catch-all)
 app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])
 app.include_router(status.router, prefix="/api/v1", tags=["Status"])
-
-
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """Detailed health check"""
-    from app.core.executor import get_executor_status
-    return {
-        "status": "healthy",
-        "executor": get_executor_status()
-    }
 
 
 # Serve frontend static files
