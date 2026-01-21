@@ -67,62 +67,304 @@ npm install
 npm run dev
 ```
 
-## 📡 API 文档
+## 📡 API Reference
 
-### 上传并脱敏文件
+Base URL: `http://your-server:8080/api/v1`
 
-```bash
-POST /api/v1/mask
-Content-Type: multipart/form-data
-X-Session-ID: <your-session-id>
+### Authentication
 
-file: <file>
-whitelist: localhost,127.0.0.1  # 可选
+All API requests require a `X-Session-ID` header for user isolation:
+
+```http
+X-Session-ID: your-unique-session-id
 ```
 
-**响应：**
+> 💡 Session ID is auto-generated in the web interface. For API usage, generate a UUID or use any unique string.
+
+---
+
+### 1. Upload and Mask File
+
+Upload a file for sensitive data masking.
+
+**Request**
+
+```http
+POST /mask
+Content-Type: multipart/form-data
+X-Session-ID: <session-id>
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file` | file | ✅ | File to mask (text files, logs, archives: .tar.gz, .tgz, .zip) |
+| `whitelist` | string | ❌ | Comma-separated values to exclude from masking |
+
+**Example**
+
+```bash
+curl -X POST "http://10.146.15.188:8080/api/v1/mask" \
+  -H "X-Session-ID: my-session-123" \
+  -F "file=@/path/to/system.log" \
+  -F "whitelist=localhost,127.0.0.1"
+```
+
+**Response** `200 OK`
+
 ```json
 {
-  "task_id": "uuid",
-  "session_id": "uuid",
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "session_id": "my-session-123",
   "status": "pending",
   "filename": "system.log",
+  "file_size": 1048576,
   "message": "File uploaded successfully. Processing started."
 }
 ```
 
-### 查询任务状态
+---
 
-```bash
-GET /api/v1/task/{task_id}
-X-Session-ID: <your-session-id>
+### 2. Get Task Status
+
+Query the processing status and results of a masking task.
+
+**Request**
+
+```http
+GET /task/{task_id}
+X-Session-ID: <session-id>
 ```
 
-### 下载脱敏文件
+**Example**
 
 ```bash
-GET /api/v1/download/{task_id}
-X-Session-ID: <your-session-id>
+curl "http://10.146.15.188:8080/api/v1/task/a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+  -H "X-Session-ID: my-session-123"
 ```
 
-### 获取脱敏报告
+**Response** `200 OK`
 
-```bash
-GET /api/v1/report/{task_id}
-X-Session-ID: <your-session-id>
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "completed",
+  "filename": "system.log",
+  "progress": 100,
+  "report": {
+    "total_matches": 156,
+    "risk_score": 72,
+    "risk_level": "HIGH",
+    "categories": {
+      "ipv4": {"count": 45, "examples": ["192.168.1.100 → [IPv4]"]},
+      "email": {"count": 23, "examples": ["admin@suse.com → [EMAIL]"]},
+      "mac": {"count": 12, "examples": ["aa:bb:cc:dd:ee:ff → [MAC]"]}
+    },
+    "processing_time": 2.34
+  }
+}
 ```
 
-### 获取任务列表（仅当前用户）
+| Status | Description |
+|--------|-------------|
+| `pending` | Task queued, waiting for processing |
+| `processing` | Masking in progress |
+| `completed` | Done, results available |
+| `failed` | Error occurred |
 
-```bash
-GET /api/v1/tasks
-X-Session-ID: <your-session-id>
+---
+
+### 3. Download Masked File
+
+Download the masked (sanitized) file.
+
+**Request**
+
+```http
+GET /download/{task_id}
+X-Session-ID: <session-id>
 ```
 
-### 系统状态
+**Example**
 
 ```bash
-GET /api/v1/status
+curl -O "http://10.146.15.188:8080/api/v1/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+  -H "X-Session-ID: my-session-123"
+```
+
+**Response** `200 OK`
+
+Returns the masked file with `Content-Disposition` header.
+
+---
+
+### 4. Get Masking Report
+
+Get detailed JSON report of the masking operation.
+
+**Request**
+
+```http
+GET /report/{task_id}
+X-Session-ID: <session-id>
+```
+
+**Example**
+
+```bash
+curl "http://10.146.15.188:8080/api/v1/report/a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+  -H "X-Session-ID: my-session-123"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "filename": "system.log",
+  "original_size": 1048576,
+  "masked_size": 1045230,
+  "processing_time": 2.34,
+  "risk_score": 72,
+  "risk_level": "HIGH",
+  "summary": {
+    "total_matches": 156,
+    "unique_values": 89
+  },
+  "categories": {
+    "ipv4": {"count": 45, "weight": 3, "risk_contribution": 27},
+    "email": {"count": 23, "weight": 5, "risk_contribution": 23},
+    "mac": {"count": 12, "weight": 3, "risk_contribution": 7}
+  },
+  "timestamp": "2026-01-21T14:30:00Z"
+}
+```
+
+---
+
+### 5. List My Tasks
+
+Get all tasks for the current session.
+
+**Request**
+
+```http
+GET /tasks
+X-Session-ID: <session-id>
+```
+
+**Example**
+
+```bash
+curl "http://10.146.15.188:8080/api/v1/tasks" \
+  -H "X-Session-ID: my-session-123"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "tasks": [
+    {
+      "task_id": "a1b2c3d4-...",
+      "filename": "system.log",
+      "status": "completed",
+      "created_at": "2026-01-21T14:25:00Z"
+    },
+    {
+      "task_id": "b2c3d4e5-...",
+      "filename": "app.tar.gz",
+      "status": "processing",
+      "created_at": "2026-01-21T14:28:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 6. Get Masking Rules
+
+Get available masking rules and their configurations.
+
+**Request**
+
+```http
+GET /rules
+```
+
+**Example**
+
+```bash
+curl "http://10.146.15.188:8080/api/v1/rules"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "rules": [
+    {"id": "ipv4", "name": "IPv4 Address", "enabled": true, "weight": 3},
+    {"id": "ipv6", "name": "IPv6 Address", "enabled": true, "weight": 3},
+    {"id": "mac", "name": "MAC Address", "enabled": true, "weight": 3},
+    {"id": "email", "name": "Email Address", "enabled": true, "weight": 5},
+    {"id": "path_user", "name": "Path Username", "enabled": true, "weight": 2},
+    {"id": "license", "name": "License Key", "enabled": true, "weight": 4},
+    {"id": "hostname", "name": "Hostname", "enabled": true, "weight": 2},
+    {"id": "username", "name": "Username", "enabled": true, "weight": 3}
+  ]
+}
+```
+
+---
+
+### 7. System Status
+
+Check service health and worker status.
+
+**Request**
+
+```http
+GET /status
+```
+
+**Example**
+
+```bash
+curl "http://10.146.15.188:8080/api/v1/status"
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "service": "SUSE Data Masking Service",
+  "version": "1.0.0",
+  "status": "healthy",
+  "executor": {
+    "max_workers": 16,
+    "active_tasks": 2,
+    "available_slots": 14
+  }
+}
+```
+
+---
+
+### Error Responses
+
+| Code | Description |
+|------|-------------|
+| `400` | Bad Request - Invalid parameters |
+| `403` | Forbidden - Session mismatch |
+| `404` | Not Found - Task not found |
+| `500` | Internal Server Error |
+
+**Error Response Format**
+
+```json
+{
+  "detail": "Error message description"
+}
 ```
 
 ## 🔧 脱敏规则
