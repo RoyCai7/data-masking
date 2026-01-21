@@ -52,7 +52,7 @@ function App() {
     return () => clearInterval(interval);
   }, [tasks]);
 
-  const handleUploadComplete = async (taskId: string) => {
+  const handleUploadComplete = async () => {
     await fetchTasks();
   };
 

@@ -5,11 +5,10 @@ import {
   ArrowDownTrayIcon,
   DocumentTextIcon,
   ShieldCheckIcon,
-  ClockIcon,
-  ExclamationTriangleIcon
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { TaskInfo, MaskingReport, downloadMaskedFile, getReport } from '../services/api';
+import { TaskInfo, MaskingReport, downloadMaskedFile } from '../services/api';
 
 interface ResultViewProps {
   task: TaskInfo;
@@ -20,7 +19,6 @@ interface ResultViewProps {
 
 export default function ResultView({ task, report, onBack, isLoading }: ResultViewProps) {
   const [isDownloading, setIsDownloading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'report' | 'preview'>('report');
 
   const handleDownloadFile = async () => {
     setIsDownloading(true);
@@ -263,7 +261,7 @@ export default function ResultView({ task, report, onBack, isLoading }: ResultVi
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Masking Examples</h3>
           
           <div className="space-y-4">
-            {report.breakdown.filter(b => b.examples.length > 0).map((rule, ruleIndex) => (
+            {report.breakdown.filter(b => b.examples.length > 0).map((rule) => (
               <div key={rule.rule_id} className="border border-gray-200 rounded-xl overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
                   <span className="font-medium text-gray-700">{rule.rule_name_zh}</span>
