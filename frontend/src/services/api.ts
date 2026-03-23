@@ -26,6 +26,22 @@ const getSessionId = (): string => {
   return sessionId;
 };
 
+// Get or set API Key
+export const getApiKey = (): string => {
+  return localStorage.getItem('dms-api-key') || '';
+};
+
+export const setApiKey = (key: string): void => {
+  localStorage.setItem('dms-api-key', key);
+  // Update default header immediately
+  api.defaults.headers.common['X-API-Key'] = key;
+};
+
+export const clearApiKey = (): void => {
+  localStorage.removeItem('dms-api-key');
+  delete api.defaults.headers.common['X-API-Key'];
+};
+
 const api = axios.create({
   baseURL: API_BASE,
   headers: {
@@ -33,9 +49,13 @@ const api = axios.create({
   }
 });
 
-// Update session header on each request
+// Update headers on each request
 api.interceptors.request.use((config) => {
   config.headers['X-Session-ID'] = getSessionId();
+  const apiKey = getApiKey();
+  if (apiKey) {
+    config.headers['X-API-Key'] = apiKey;
+  }
   return config;
 });
 
@@ -91,12 +111,36 @@ export interface SystemStatus {
   service: string;
   version: string;
   status: string;
+  auth_enabled: boolean;
   executor: {
     max_workers: number;
     active_tasks: number;
     available_slots: number;
   };
 }
+
+// Handle 401 auth errors globally
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      const needsKey = !getApiKey();
+      if (needsKey) {
+        const key = window.prompt(
+          'API Key required. Enter your API Key:\n\n' +
+          '(Get one from your admin or run: python generate_key.py create --name "Your Name")'
+        );
+        if (key) {
+          setApiKey(key.trim());
+          // Retry the failed request
+          error.config.headers['X-API-Key'] = key.trim();
+          return api.request(error.config);
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // API functions
 export const uploadFile = async (file: File, whitelist: string[] = []): Promise<{ task_id: string; session_id: string }> => {
@@ -147,6 +191,40 @@ export const getRules = async (): Promise<{ rules: MaskingRule[] }> => {
 
 export const getSystemStatus = async (): Promise<SystemStatus> => {
   const response = await api.get('/status');
+  return response.data;
+};
+
+// --- API Key self-service ---
+
+export interface KeyInfo {
+  name: string;
+  role: string;
+  created_at: string;
+  expires_at: string;
+  key_preview: string;
+}
+
+export interface RotateKeyResponse {
+  message: string;
+  new_key: string;
+  name: string;
+  role: string;
+  created_at: string;
+  expires_at: string;
+  warning: string;
+}
+
+export const getMyKeyInfo = async (): Promise<KeyInfo> => {
+  const response = await api.get('/keys/me');
+  return response.data;
+};
+
+export const rotateMyKey = async (): Promise<RotateKeyResponse> => {
+  const response = await api.post('/keys/rotate');
+  // Auto-update stored key
+  if (response.data.new_key) {
+    setApiKey(response.data.new_key);
+  }
   return response.data;
 };
 

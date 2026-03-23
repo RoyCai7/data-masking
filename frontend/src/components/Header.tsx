@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { KeyIcon } from '@heroicons/react/24/outline';
 import { getSystemStatus, SystemStatus } from '../services/api';
+import Settings from './Settings';
 
 // SUSE Chameleon Logo SVG
 const SuseLogo = () => (
@@ -12,6 +14,7 @@ const SuseLogo = () => (
 
 export default function Header() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -62,9 +65,20 @@ export default function Header() {
             >
               API Docs
             </a>
+
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
+              title="API Key Settings"
+            >
+              <KeyIcon className="w-4 h-4" />
+              <span>Key</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </header>
   );
 }

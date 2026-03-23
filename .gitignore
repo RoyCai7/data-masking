@@ -35,6 +35,10 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# API Keys (sensitive!)
+backend/keys.json
+!backend/keys.json.example
+
 # Temp files
 /tmp/
 *.tmp

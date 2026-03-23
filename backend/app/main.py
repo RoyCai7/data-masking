@@ -12,6 +12,7 @@ import os
 
 from app.api import mask, status
 from app.core.executor import shutdown_executor
+from app.core.auth import APIKeyMiddleware, AUTH_ENABLED
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     logger.info("🦎 SUSE Data Masking Service starting...")
     logger.info("✅ ThreadPoolExecutor initialized with 16 workers")
+    logger.info(f"🔐 API Key Authentication: {'ENABLED' if AUTH_ENABLED else 'DISABLED (dev mode)'}")
     yield
     logger.info("🛑 Shutting down...")
     shutdown_executor()
@@ -56,6 +58,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API Key authentication middleware
+app.add_middleware(APIKeyMiddleware)
 
 # Include routers FIRST (before catch-all)
 app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])

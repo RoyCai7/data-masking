@@ -9,8 +9,10 @@ services:
     environment:
       - MAX_WORKERS=16
       - PYTHONUNBUFFERED=1
+      - AUTH_ENABLED=true
     volumes:
       - masking-data:/tmp/masking-service
+      - ./backend/keys.json:/app/keys.json
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
