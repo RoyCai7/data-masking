@@ -15,11 +15,29 @@ import logging
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
-from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+try:
+    from fastapi import Request, HTTPException
+    from fastapi.responses import JSONResponse
+    from starlette.middleware.base import BaseHTTPMiddleware
+except ModuleNotFoundError:
+    Request = Any
+
+    class HTTPException(Exception):
+        def __init__(self, status_code: int, detail: str):
+            super().__init__(detail)
+            self.status_code = status_code
+            self.detail = detail
+
+    class JSONResponse:
+        def __init__(self, status_code: int, content: dict):
+            self.status_code = status_code
+            self.content = content
+
+    class BaseHTTPMiddleware:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("FastAPI/Starlette is required to use APIKeyMiddleware")
 
 logger = logging.getLogger(__name__)
 
