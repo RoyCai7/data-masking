@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { KeyIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { KeyIcon, LightBulbIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { getApiKey, getMyKeyInfo, getSystemStatus, KeyInfo, SystemStatus } from '../services/api';
 import AdminConsole from './AdminConsole';
 import Settings from './Settings';
+import SuggestRule from './SuggestRule';
 
 // SUSE Chameleon Logo SVG
 const SuseLogo = () => (
@@ -18,6 +19,7 @@ export default function Header() {
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
+  const [showSuggestRule, setShowSuggestRule] = useState(false);
 
   const refreshKeyInfo = useCallback(async () => {
     if (!getApiKey()) {
@@ -100,6 +102,15 @@ export default function Header() {
             </a>
 
             <button
+              onClick={() => setShowSuggestRule(true)}
+              className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
+              title="Suggest a rule change"
+            >
+              <LightBulbIcon className="w-4 h-4" />
+              <span>Suggest</span>
+            </button>
+
+            <button
               onClick={() => setShowSettings(true)}
               className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
               title="API Key Settings"
@@ -124,6 +135,7 @@ export default function Header() {
 
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       {showAdminConsole && <AdminConsole onClose={() => setShowAdminConsole(false)} />}
+      {showSuggestRule && <SuggestRule onClose={() => setShowSuggestRule(false)} />}
     </header>
   );
 }

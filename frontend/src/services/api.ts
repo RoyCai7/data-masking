@@ -339,4 +339,20 @@ export const disableApiKey = async (key: string): Promise<{ message: string }> =
   return response.data;
 };
 
+export const submitRuleSuggestion = async (payload: {
+  rule_id?: string | null;
+  action: 'create' | 'modify' | 'disable';
+  name?: string | null;
+  category?: string | null;
+  pattern?: string | null;
+  flags?: string | null;
+  strategy?: string | null;
+  placeholder?: string | null;
+  weight?: number | null;
+  reason: string;
+}): Promise<{ message: string; suggestion: RuleSuggestion }> => {
+  const response = await api.post('/rules/suggestions', payload);
+  return response.data;
+};
+
 export { getSessionId };

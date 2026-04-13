@@ -1,0 +1,242 @@
+import { useState, type ChangeEvent } from 'react';
+import { motion } from 'framer-motion';
+import {
+  LightBulbIcon,
+  XMarkIcon,
+  CheckCircleIcon,
+} from '@heroicons/react/24/outline';
+import { submitRuleSuggestion, getRules, MaskingRule } from '../services/api';
+
+interface SuggestRuleProps {
+  onClose: () => void;
+}
+
+type SuggestionAction = 'create' | 'modify' | 'disable';
+
+export default function SuggestRule({ onClose }: SuggestRuleProps) {
+  const [action, setAction] = useState<SuggestionAction>('create');
+  const [ruleId, setRuleId] = useState('');
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
+  const [pattern, setPattern] = useState('');
+  const [flags, setFlags] = useState('');
+  const [strategy, setStrategy] = useState('placeholder');
+  const [placeholder, setPlaceholder] = useState('[MASKED]');
+  const [weight, setWeight] = useState(5);
+  const [reason, setReason] = useState('');
+
+  const [existingRules, setExistingRules] = useState<MaskingRule[]>([]);
+  const [rulesLoaded, setRulesLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const loadExistingRules = async () => {
+    if (rulesLoaded) return;
+    try {
+      const data = await getRules();
+      setExistingRules(data.rules || []);
+      setRulesLoaded(true);
+    } catch {
+      // ignore — user can still type manually
+    }
+  };
+
+  const handleActionChange = (newAction: SuggestionAction) => {
+    setAction(newAction);
+    if (newAction !== 'create') {
+      loadExistingRules();
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!reason.trim()) {
+      setError('Please provide a reason for your suggestion');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await submitRuleSuggestion({
+        rule_id: action !== 'create' ? ruleId || null : null,
+        action,
+        name: name || null,
+        category: category || null,
+        pattern: pattern || null,
+        flags: flags || null,
+        strategy: strategy || null,
+        placeholder: placeholder || null,
+        weight: weight ?? null,
+        reason: reason.trim(),
+      });
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err?.message || 'Failed to submit suggestion');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto"
+      >
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-amber-50 rounded-lg">
+              <LightBulbIcon className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Suggest a Rule Change</h2>
+              <p className="text-xs text-gray-500">Your suggestion will be reviewed by an admin</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <XMarkIcon className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {submitted ? (
+            <div className="py-8 text-center space-y-3">
+              <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto" />
+              <p className="text-lg font-semibold text-gray-900">Suggestion Submitted</p>
+              <p className="text-sm text-gray-500">An admin will review your suggestion. Thank you!</p>
+              <button onClick={onClose} className="mt-4 px-6 py-2.5 bg-suse-green text-white rounded-lg font-medium">
+                Close
+              </button>
+            </div>
+          ) : (
+            <>
+              {error && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">{error}</div>
+              )}
+
+              {/* Action type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">What would you like to do?</label>
+                <div className="flex gap-2">
+                  {(['create', 'modify', 'disable'] as const).map((a) => (
+                    <button
+                      key={a}
+                      onClick={() => handleActionChange(a)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        action === a
+                          ? 'bg-suse-green text-white border-suse-green'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {a === 'create' ? 'New Rule' : a === 'modify' ? 'Modify Rule' : 'Disable Rule'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Target rule for modify/disable */}
+              {action !== 'create' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Target Rule</label>
+                  {rulesLoaded && existingRules.length > 0 ? (
+                    <select
+                      value={ruleId}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleId(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
+                    >
+                      <option value="">— Select a rule —</option>
+                      {existingRules.map((r) => (
+                        <option key={r.id} value={r.id}>{r.id} — {r.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={ruleId}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleId(e.target.value)}
+                      placeholder="rule_id"
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900"
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Rule details for create/modify */}
+              {action !== 'disable' && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Rule Name</label>
+                      <input value={name} onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)} placeholder="e.g. AWS Secret Key" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Category</label>
+                      <input value={category} onChange={(e: ChangeEvent<HTMLInputElement>) => setCategory(e.target.value)} placeholder="e.g. cloud, pii" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Regex Pattern</label>
+                    <textarea value={pattern} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setPattern(e.target.value)} placeholder="e.g. AKIA[0-9A-Z]{16}" rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Strategy</label>
+                      <select value={strategy} onChange={(e: ChangeEvent<HTMLSelectElement>) => setStrategy(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+                        <option value="placeholder">placeholder</option>
+                        <option value="partial">partial</option>
+                        <option value="asterisk">asterisk</option>
+                        <option value="hash">hash</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Placeholder</label>
+                      <input value={placeholder} onChange={(e: ChangeEvent<HTMLInputElement>) => setPlaceholder(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Weight</label>
+                      <input type="number" min={0} max={100} value={weight} onChange={(e: ChangeEvent<HTMLInputElement>) => setWeight(Number(e.target.value) || 0)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Regex Flags</label>
+                    <input value={flags} onChange={(e: ChangeEvent<HTMLInputElement>) => setFlags(e.target.value)} placeholder="e.g. IGNORECASE" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                  </div>
+                </>
+              )}
+
+              {/* Reason — always required */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={reason}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setReason(e.target.value)}
+                  placeholder="Explain why this rule change is needed..."
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900"
+                />
+              </div>
+
+              <button
+                onClick={handleSubmit}
+                disabled={loading || !reason.trim() || (action !== 'create' && !ruleId)}
+                className="w-full px-4 py-2.5 rounded-lg bg-suse-green text-white font-medium disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Submitting…' : 'Submit Suggestion'}
+              </button>
+            </>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
