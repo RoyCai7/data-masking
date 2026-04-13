@@ -132,7 +132,11 @@ export default function Settings({ onClose }: SettingsProps) {
                 value={apiKey}
                 onChange={(e) => setApiKeyState(e.target.value)}
                 placeholder="dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none transition-all text-sm font-mono"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="flex-1 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400 caret-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none transition-all text-sm font-mono"
+                style={{ WebkitTextFillColor: '#111827' }}
               />
               <button
                 type="button"
