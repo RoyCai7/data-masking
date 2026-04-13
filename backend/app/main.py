@@ -10,9 +10,10 @@ from contextlib import asynccontextmanager
 import logging
 import os
 
-from app.api import mask, status
+from app.api import mask, status, rules
 from app.core.executor import shutdown_executor
 from app.core.auth import APIKeyMiddleware, AUTH_ENABLED
+from app.engine.rule_service import rule_service
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +32,9 @@ async def lifespan(app: FastAPI):
     logger.info("🦎 SUSE Data Masking Service starting...")
     logger.info("✅ ThreadPoolExecutor initialized with 16 workers")
     logger.info(f"🔐 API Key Authentication: {'ENABLED' if AUTH_ENABLED else 'DISABLED (dev mode)'}")
+    # Initialize rules DB + cache
+    rule_service.initialize()
+    logger.info("✅ Rules engine initialized (SQLite + in-memory cache)")
     yield
     logger.info("🛑 Shutting down...")
     shutdown_executor()
@@ -63,6 +67,9 @@ app.add_middleware(
 app.add_middleware(APIKeyMiddleware)
 
 # Include routers FIRST (before catch-all)
+# Rules router FIRST — so /rules, /rules/suggestions, /rules/changelog
+# take precedence over mask.py's catch-all endpoints
+app.include_router(rules.router, prefix="/api/v1", tags=["Rules"])
 app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])
 app.include_router(status.router, prefix="/api/v1", tags=["Status"])
 
@@ -71,6 +78,12 @@ app.include_router(status.router, prefix="/api/v1", tags=["Status"])
 if os.path.exists(FRONTEND_DIR):
     # Mount assets directory
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+
+
+# Health check endpoint for Docker healthcheck
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
 
 
 # Catch-all route for SPA - must be defined AFTER all other routes

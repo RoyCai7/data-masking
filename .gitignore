@@ -39,6 +39,9 @@ Thumbs.db
 backend/keys.json
 !backend/keys.json.example
 
+# Runtime database
+backend/rules.db
+
 # Temp files
 /tmp/
 *.tmp

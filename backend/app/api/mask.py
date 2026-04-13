@@ -336,9 +336,4 @@ async def get_report(
     return task.report
 
 
-@router.get("/rules", summary="List masking rules")
-async def list_rules():
-    """Get available masking rules"""
-    return {
-        "rules": get_rules_info()
-    }
+# Note: GET /rules is served by api/rules.py (rules management router)
