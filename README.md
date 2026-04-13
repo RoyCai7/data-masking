@@ -11,6 +11,12 @@
 
 ---
 
+## 📚 Documentation
+
+- [User & Admin Operation Guide](docs/user-admin-operation-guide.md)
+- [5-Minute Quick Start Guide](docs/quick-start-guide.md)
+- [Project Docs Index](docs/README.md)
+
 ## ✨ Features
 
 - 🔒 **Smart Masking** - Auto-detect 8 types of sensitive data: IP, MAC, Email, Username, License, etc.
