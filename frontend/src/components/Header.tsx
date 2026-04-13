@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { KeyIcon } from '@heroicons/react/24/outline';
-import { getSystemStatus, SystemStatus } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { KeyIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { getApiKey, getMyKeyInfo, getSystemStatus, KeyInfo, SystemStatus } from '../services/api';
+import AdminConsole from './AdminConsole';
 import Settings from './Settings';
 
 // SUSE Chameleon Logo SVG
@@ -14,7 +15,23 @@ const SuseLogo = () => (
 
 export default function Header() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdminConsole, setShowAdminConsole] = useState(false);
+
+  const refreshKeyInfo = useCallback(async () => {
+    if (!getApiKey()) {
+      setKeyInfo(null);
+      return;
+    }
+
+    try {
+      const info = await getMyKeyInfo();
+      setKeyInfo(info);
+    } catch {
+      setKeyInfo(null);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -27,9 +44,10 @@ export default function Header() {
     };
 
     fetchStatus();
+    refreshKeyInfo();
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refreshKeyInfo]);
 
   // Listen for 401 auth errors to auto-open Settings
   useEffect(() => {
@@ -37,6 +55,14 @@ export default function Header() {
     window.addEventListener('api-key-required', handler);
     return () => window.removeEventListener('api-key-required', handler);
   }, []);
+
+  useEffect(() => {
+    const handler = () => refreshKeyInfo();
+    window.addEventListener('auth-state-changed', handler);
+    return () => window.removeEventListener('auth-state-changed', handler);
+  }, [refreshKeyInfo]);
+
+  const isAdmin = keyInfo?.role === 'admin';
 
   return (
     <header className="bg-suse-green-dark text-white shadow-lg">
@@ -81,11 +107,23 @@ export default function Header() {
               <KeyIcon className="w-4 h-4" />
               <span>Key</span>
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => setShowAdminConsole(true)}
+                className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
+                title="Admin Console"
+              >
+                <ShieldCheckIcon className="w-4 h-4" />
+                <span>Admin</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      {showAdminConsole && <AdminConsole onClose={() => setShowAdminConsole(false)} />}
     </header>
   );
 }

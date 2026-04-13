@@ -36,11 +36,13 @@ export const setApiKey = (key: string): void => {
   localStorage.setItem('dms-api-key', key);
   // Update default header immediately
   api.defaults.headers.common['X-API-Key'] = key;
+  window.dispatchEvent(new CustomEvent('auth-state-changed'));
 };
 
 export const clearApiKey = (): void => {
   localStorage.removeItem('dms-api-key');
   delete api.defaults.headers.common['X-API-Key'];
+  window.dispatchEvent(new CustomEvent('auth-state-changed'));
 };
 
 const api = axios.create({
@@ -109,6 +111,57 @@ export interface MaskingRule {
   name: string;
   enabled: boolean;
   weight: number;
+}
+
+export interface RuleDetail extends MaskingRule {
+  category: string;
+  pattern: string;
+  flags: string;
+  strategy: 'asterisk' | 'placeholder' | 'partial' | 'hash';
+  placeholder: string;
+  is_builtin?: boolean;
+  version?: number;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+}
+
+export interface RuleSuggestion {
+  id: number;
+  rule_id?: string | null;
+  action: 'create' | 'modify' | 'disable';
+  name?: string | null;
+  category?: string | null;
+  pattern?: string | null;
+  flags?: string | null;
+  strategy?: string | null;
+  placeholder?: string | null;
+  weight?: number | null;
+  reason?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  submitted_by?: string | null;
+  submitted_at?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+}
+
+export interface RuleChangelogEntry {
+  id: number;
+  rule_id: string;
+  action: string;
+  old_value?: string | null;
+  new_value?: string | null;
+  changed_by: string;
+  changed_at: string;
+}
+
+export interface ManagedKeyInfo {
+  name: string;
+  role: string;
+  enabled: boolean;
+  created_at: string;
+  expires_at: string;
+  key_preview: string;
 }
 
 export interface SystemStatus {
@@ -182,6 +235,56 @@ export const getRules = async (): Promise<{ rules: MaskingRule[] }> => {
   return response.data;
 };
 
+export const getRulesDetailed = async (params?: { category?: string; enabled_only?: boolean }): Promise<{ total: number; rules: RuleDetail[] }> => {
+  const response = await api.get('/rules', { params });
+  return response.data;
+};
+
+export const createRule = async (payload: Omit<RuleDetail, 'is_builtin' | 'version' | 'created_at' | 'updated_at' | 'created_by'>): Promise<{ message: string; rule: RuleDetail }> => {
+  const response = await api.post('/rules', payload);
+  return response.data;
+};
+
+export const updateRule = async (ruleId: string, payload: Partial<RuleDetail>): Promise<{ message: string; rule: RuleDetail }> => {
+  const response = await api.put(`/rules/${ruleId}`, payload);
+  return response.data;
+};
+
+export const toggleRule = async (ruleId: string): Promise<{ message: string; rule: RuleDetail }> => {
+  const response = await api.patch(`/rules/${ruleId}/toggle`);
+  return response.data;
+};
+
+export const deleteRule = async (ruleId: string): Promise<{ message: string }> => {
+  const response = await api.delete(`/rules/${ruleId}`);
+  return response.data;
+};
+
+export const exportRules = async (): Promise<{ total: number; rules: RuleDetail[] }> => {
+  const response = await api.get('/rules-export');
+  return response.data;
+};
+
+export const importRules = async (rules: RuleDetail[]): Promise<{ message: string; created: number; updated: number; errors: Array<{ id?: string; error: string }> }> => {
+  const response = await api.post('/rules-import', { rules });
+  return response.data;
+};
+
+export const listRuleSuggestions = async (status?: string): Promise<{ total: number; suggestions: RuleSuggestion[] }> => {
+  const response = await api.get('/rules/suggestions', { params: status ? { status } : undefined });
+  return response.data;
+};
+
+export const reviewRuleSuggestion = async (suggestionId: number, action: 'approve' | 'reject'): Promise<{ message: string; suggestion: RuleSuggestion }> => {
+  const response = await api.patch(`/rules/suggestions/${suggestionId}`, { action });
+  return response.data;
+};
+
+export const listRuleChangelog = async (params?: { rule_id?: string; limit?: number }): Promise<{ total: number; changelog: RuleChangelogEntry[] }> => {
+  const response = await api.get('/rules/changelog', { params });
+  return response.data;
+};
+
 export const getSystemStatus = async (): Promise<SystemStatus> => {
   const response = await api.get('/status');
   return response.data;
@@ -218,6 +321,21 @@ export const rotateMyKey = async (): Promise<RotateKeyResponse> => {
   if (response.data.new_key) {
     setApiKey(response.data.new_key);
   }
+  return response.data;
+};
+
+export const listApiKeys = async (): Promise<{ total: number; keys: ManagedKeyInfo[] }> => {
+  const response = await api.get('/keys');
+  return response.data;
+};
+
+export const createApiKey = async (payload: { name: string; role: 'admin' | 'user'; expires_days: number }): Promise<{ message: string; key: string; name: string; role: string; created_at: string; expires_at: string }> => {
+  const response = await api.post('/keys', payload);
+  return response.data;
+};
+
+export const disableApiKey = async (key: string): Promise<{ message: string }> => {
+  const response = await api.post('/keys/disable', { key });
   return response.data;
 };
 
