@@ -97,7 +97,7 @@ class TestMaskStrategy:
     def test_hash(self):
         rule = self._make_rule("hash")
         result = rule.mask("SECRET")
-        assert len(result) == 8
+        assert len(result) == 12
         assert all(c in "0123456789abcdef" for c in result)
 
     def test_hash_deterministic(self):

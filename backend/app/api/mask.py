@@ -29,10 +29,17 @@ from app.engine.masker import get_engine
 from app.engine.rules import get_rules_info
 from app.engine.archive import detect_archive_type, ArchiveType
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
-# Supported file extensions
-TEXT_EXTENSIONS = {'.txt', '.log', '.csv', '.json', '.conf', '.ini', '.yaml', '.yml', '.xml', '.md', '.sh', '.py', '.java', '.js', '.ts', '.html', '.css'}
+# Maximum upload file size (500 MB)
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024
+
+# Supported file extensions (text extensions imported from archive module)
+from app.engine.archive import TEXT_EXTENSIONS
 ARCHIVE_EXTENSIONS = {'.tar.gz', '.tgz', '.tar.bz2', '.tbz2', '.tar.xz', '.txz', '.tar', '.zip'}
 
 
@@ -100,6 +107,11 @@ async def mask_file(
     temp_file_path = session.storage_path / f"upload_{task_id}_{file.filename}"
     try:
         content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB."
+            )
         with open(temp_file_path, 'wb') as f:
             f.write(content)
     except Exception as e:
@@ -168,6 +180,7 @@ async def process_masking_task(
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "file_info": {
                 "name": filename,
+                "size_bytes": os.path.getsize(file_path) if os.path.exists(file_path) else 0,
                 "is_archive": result.is_archive,
                 "archive_type": result.archive_type,
                 "files_processed": result.files_processed,
@@ -215,8 +228,8 @@ async def process_masking_task(
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-        except:
-            pass
+        except Exception:
+            logger.warning(f"Failed to clean up temp file: {file_path}")
 
 
 @router.get("/task/{task_id}", response_model=TaskStatusResponse, summary="Get task status")

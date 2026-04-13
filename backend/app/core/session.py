@@ -3,6 +3,7 @@ Session management for user data isolation
 Each user gets a unique session token to access only their own data
 """
 import uuid
+import re as _re
 import time
 import threading
 from typing import Dict, Optional
@@ -13,6 +14,12 @@ import shutil
 # Session storage
 _sessions: Dict[str, 'SessionData'] = {}
 _lock = threading.Lock()
+
+# UUID v4 pattern for session ID validation
+_UUID_RE = _re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    _re.IGNORECASE,
+)
 
 # Session expiry time (2 hours)
 SESSION_EXPIRY_SECONDS = 7200
@@ -83,9 +90,14 @@ def get_session(session_id: str) -> Optional[SessionData]:
 def get_or_create_session(session_id: Optional[str]) -> tuple[str, SessionData]:
     """Get existing session or create a new one"""
     if session_id:
-        session = get_session(session_id)
-        if session:
-            return session_id, session
+        # Validate session_id is a proper UUID to prevent path traversal
+        if not _UUID_RE.match(session_id):
+            # Reject malformed session IDs silently — create a new session
+            pass
+        else:
+            session = get_session(session_id)
+            if session:
+                return session_id, session
     
     # Create new session
     new_session_id = create_session()
@@ -134,7 +146,8 @@ def get_session_tasks(session_id: str) -> list[TaskResult]:
 
 def _cleanup_session(session_id: str):
     """Clean up session data and files"""
-    session = _sessions.pop(session_id, None)
+    with _lock:
+        session = _sessions.pop(session_id, None)
     if session and session.storage_path.exists():
         shutil.rmtree(session.storage_path, ignore_errors=True)
 

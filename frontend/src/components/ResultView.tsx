@@ -134,9 +134,19 @@ export default function ResultView({ task, report, onBack, isLoading }: ResultVi
               <h2 className="text-xl font-bold text-gray-900">{task.filename}</h2>
               {report && (
                 <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                  <span>{formatFileSize(report.file_info.size_bytes)}</span>
-                  <span>•</span>
+                  {report.file_info.size_bytes != null && report.file_info.size_bytes > 0 && (
+                    <>
+                      <span>{formatFileSize(report.file_info.size_bytes)}</span>
+                      <span>•</span>
+                    </>
+                  )}
                   <span>{report.file_info.lines_total.toLocaleString()} lines</span>
+                  {report.file_info.files_processed != null && report.file_info.files_processed > 1 && (
+                    <>
+                      <span>•</span>
+                      <span>{report.file_info.files_processed} files</span>
+                    </>
+                  )}
                   <span>•</span>
                   <span className="flex items-center">
                     <ClockIcon className="w-4 h-4 mr-1" />

@@ -12,7 +12,8 @@ import json
 import os
 import secrets
 import logging
-from datetime import date
+import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -26,7 +27,11 @@ logger = logging.getLogger(__name__)
 KEYS_FILE = Path(os.getenv("API_KEYS_FILE", str(Path(__file__).parent.parent.parent / "keys.json")))
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
 
-# Paths that don't require authentication
+# In-memory key cache
+_keys_cache: Optional[Dict[str, dict]] = None
+_keys_mtime: float = 0.0
+
+# Paths that don't require authentication (but optionally accept credentials)
 PUBLIC_PATHS = frozenset({
     "/api/v1/status",
     "/api/v1/rules",
@@ -62,15 +67,41 @@ def _load_keys_file() -> dict:
 
 
 def _save_keys_file(data: dict):
-    """Save keys to JSON file"""
-    with open(KEYS_FILE, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    """Save keys to JSON file atomically (write-to-temp then rename)"""
+    global _keys_cache, _keys_mtime
+    try:
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(KEYS_FILE.parent), suffix=".tmp"
+        )
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, str(KEYS_FILE))
+        # Invalidate cache so next read picks up changes
+        _keys_cache = None
+        _keys_mtime = 0.0
+    except Exception as e:
+        logger.error(f"Failed to save keys file: {e}")
+        # Clean up temp file if rename failed
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise
 
 
 def load_keys() -> Dict[str, dict]:
-    """Load all API keys as a dict keyed by the key string"""
+    """Load all API keys as a dict keyed by the key string (cached)"""
+    global _keys_cache, _keys_mtime
+    try:
+        mtime = KEYS_FILE.stat().st_mtime if KEYS_FILE.exists() else 0.0
+    except OSError:
+        mtime = 0.0
+    if _keys_cache is not None and mtime == _keys_mtime:
+        return _keys_cache
     data = _load_keys_file()
-    return {k["key"]: k for k in data.get("keys", [])}
+    _keys_cache = {k["key"]: k for k in data.get("keys", [])}
+    _keys_mtime = mtime
+    return _keys_cache
 
 
 def add_key(name: str, role: str = "user", expires_days: int = 365) -> dict:
@@ -81,9 +112,7 @@ def add_key(name: str, role: str = "user", expires_days: int = 365) -> dict:
         "name": name,
         "role": role,
         "created_at": date.today().isoformat(),
-        "expires_at": (date.today().replace(year=date.today().year + 1)).isoformat()
-        if expires_days >= 365
-        else str(date.fromordinal(date.today().toordinal() + expires_days)),
+        "expires_at": (date.today() + timedelta(days=expires_days)).isoformat(),
         "enabled": True,
     }
     data.setdefault("keys", []).append(new_key)
@@ -128,7 +157,7 @@ def rotate_key(old_api_key: str) -> Optional[dict]:
         "name": old_entry["name"],
         "role": old_entry.get("role", "user"),
         "created_at": date.today().isoformat(),
-        "expires_at": (date.today().replace(year=date.today().year + 1)).isoformat(),
+        "expires_at": (date.today() + timedelta(days=365)).isoformat(),
         "enabled": True,
     }
     data["keys"].append(new_key)
@@ -182,7 +211,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     
     - Checks X-API-Key header
     - Injects user info into request.state.auth_user
-    - Skips auth for public paths and when AUTH_ENABLED=false
+    - Public paths: auth is optional (credentials accepted but not required)
+    - Protected paths: auth is mandatory
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -192,13 +222,20 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        # Skip auth for public paths
+        # Extract API key (header only — never from query params for security)
+        api_key = request.headers.get("X-API-Key")
+
         if _is_public_path(path):
+            # Public paths: optionally validate credentials if provided
+            if api_key:
+                try:
+                    key_data = validate_key(api_key)
+                    request.state.auth_user = key_data
+                except HTTPException:
+                    pass  # Optional auth — don't block on invalid key
             return await call_next(request)
 
-        # Extract API key
-        api_key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
-
+        # Protected path — require valid key
         if not api_key:
             return JSONResponse(
                 status_code=401,

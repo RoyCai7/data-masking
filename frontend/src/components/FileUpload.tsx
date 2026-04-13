@@ -24,11 +24,15 @@ export default function FileUpload({ onUploadComplete }: FileUploadProps) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/plain': ['.txt', '.log'],
+      'text/plain': ['.txt', '.log', '.conf', '.cfg', '.ini'],
       'text/csv': ['.csv'],
       'application/json': ['.json'],
       'text/yaml': ['.yaml', '.yml'],
-      'text/x-ini': ['.ini', '.conf']
+      'application/gzip': ['.tar.gz', '.tgz'],
+      'application/x-bzip2': ['.tar.bz2', '.tbz2'],
+      'application/x-xz': ['.tar.xz', '.txz'],
+      'application/x-tar': ['.tar'],
+      'application/zip': ['.zip'],
     },
     maxSize: 500 * 1024 * 1024, // 500MB
     multiple: false
@@ -90,7 +94,7 @@ export default function FileUpload({ onUploadComplete }: FileUploadProps) {
           or <span className="text-suse-green font-medium">click to browse</span>
         </p>
         <p className="mt-3 text-xs text-gray-400">
-          Supports .txt .log .csv .json .yaml .conf • Max 500MB
+          Supports .txt .log .csv .json .yaml .conf .tar.gz .tgz .zip • Max 500MB
         </p>
       </div>
 

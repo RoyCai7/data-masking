@@ -9,7 +9,7 @@ import uuid
 import os
 import tempfile
 import shutil
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Callable
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -82,7 +82,7 @@ class MaskingEngine:
         content: str,
         rules: Optional[List[MaskingRule]] = None,
         whitelist: Optional[List[str]] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[Callable] = None
     ) -> MaskResult:
         """
         Mask sensitive content with parallel processing for large files
@@ -154,7 +154,7 @@ class MaskingEngine:
         lines: List[str],
         rules: List[MaskingRule],
         whitelist: List[str],
-        progress_callback: Optional[callable]
+        progress_callback: Optional[Callable]
     ) -> Tuple[List[str], List[MatchInfo]]:
         """Process large files in parallel chunks"""
         loop = asyncio.get_event_loop()
@@ -322,7 +322,7 @@ class MaskingEngine:
         output_dir: str,
         rules: Optional[List[MaskingRule]] = None,
         whitelist: Optional[List[str]] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[Callable] = None
     ) -> MaskResult:
         """
         Mask a file - supports both regular files and archives
@@ -366,7 +366,7 @@ class MaskingEngine:
         archive_type: ArchiveType,
         rules: List[MaskingRule],
         whitelist: List[str],
-        progress_callback: Optional[callable]
+        progress_callback: Optional[Callable]
     ) -> MaskResult:
         """Process an archive file"""
         import logging

@@ -8,12 +8,13 @@ const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  // Fallback for HTTP environments
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  // Fallback using crypto.getRandomValues (works on HTTP)
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 // Get or create session ID
@@ -87,7 +88,10 @@ export interface MaskingReport {
   generated_at: string;
   file_info: {
     name: string;
-    size_bytes: number;
+    size_bytes?: number;
+    is_archive?: boolean;
+    archive_type?: string;
+    files_processed?: number;
     lines_total: number;
   };
   summary: {
@@ -124,19 +128,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      const needsKey = !getApiKey();
-      if (needsKey) {
-        const key = window.prompt(
-          'API Key required. Enter your API Key:\n\n' +
-          '(Get one from your admin or run: python generate_key.py create --name "Your Name")'
-        );
-        if (key) {
-          setApiKey(key.trim());
-          // Retry the failed request
-          error.config.headers['X-API-Key'] = key.trim();
-          return api.request(error.config);
-        }
-      }
+      // Dispatch custom event so the Settings component can open the API key dialog
+      window.dispatchEvent(new CustomEvent('api-key-required'));
     }
     return Promise.reject(error);
   }

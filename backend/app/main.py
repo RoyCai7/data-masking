@@ -7,12 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 import os
 
 from app.api import mask, status, rules
 from app.core.executor import shutdown_executor
 from app.core.auth import APIKeyMiddleware, AUTH_ENABLED
+from app.core.session import cleanup_expired_sessions
 from app.engine.rule_service import rule_service
 
 # Configure logging
@@ -35,7 +37,21 @@ async def lifespan(app: FastAPI):
     # Initialize rules DB + cache
     rule_service.initialize()
     logger.info("✅ Rules engine initialized (SQLite + in-memory cache)")
+
+    # Start periodic session cleanup task
+    async def _session_cleanup_loop():
+        while True:
+            await asyncio.sleep(600)  # Every 10 minutes
+            try:
+                cleanup_expired_sessions()
+            except Exception:
+                logger.warning("Session cleanup failed", exc_info=True)
+
+    cleanup_task = asyncio.create_task(_session_cleanup_loop())
+
     yield
+
+    cleanup_task.cancel()
     logger.info("🛑 Shutting down...")
     shutdown_executor()
     logger.info("✅ Cleanup completed")
@@ -58,7 +74,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -96,8 +112,11 @@ async def serve_spa(request: Request, full_path: str):
     
     # Check if file exists in frontend dist
     file_path = os.path.join(FRONTEND_DIR, full_path)
-    if os.path.isfile(file_path):
-        return FileResponse(file_path)
+    # Prevent path traversal — resolved path must stay within FRONTEND_DIR
+    real_path = os.path.realpath(file_path)
+    real_frontend = os.path.realpath(FRONTEND_DIR)
+    if os.path.isfile(real_path) and real_path.startswith(real_frontend + os.sep):
+        return FileResponse(real_path)
     
     # Return index.html for SPA routing
     index_path = os.path.join(FRONTEND_DIR, "index.html")

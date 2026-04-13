@@ -15,7 +15,7 @@ import json
 import os
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 
@@ -933,7 +933,7 @@ def seed_builtin_rules():
     """
     conn = _get_conn()
     cursor = conn.cursor()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     inserted = 0
     for rule in BUILTIN_RULES:
@@ -943,12 +943,14 @@ def seed_builtin_rules():
                 """INSERT INTO rules
                    (id, name, category, pattern, flags, strategy, placeholder,
                     weight, enabled, is_builtin, version, created_at, updated_at, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, ?, ?, 'system')""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, 'system')""",
                 (
                     rule["id"], rule["name"], rule["category"],
                     rule["pattern"], rule.get("flags", ""),
                     rule["strategy"], rule["placeholder"],
-                    rule["weight"], now, now
+                    rule["weight"],
+                    1 if rule.get("enabled", True) else 0,
+                    now, now
                 )
             )
             inserted += 1
@@ -1010,7 +1012,7 @@ def create_rule(data: dict, created_by: str = "admin") -> dict:
         raise ValueError(f"Invalid regex pattern: {e}")
 
     conn = _get_conn()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """INSERT INTO rules
            (id, name, category, pattern, flags, strategy, placeholder,
@@ -1054,7 +1056,7 @@ def update_rule(rule_id: str, data: dict, changed_by: str = "admin") -> dict:
         raise ValueError(f"Invalid regex pattern: {e}")
 
     conn = _get_conn()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """UPDATE rules SET
             name = ?, category = ?, pattern = ?, flags = ?,
@@ -1087,7 +1089,7 @@ def toggle_rule(rule_id: str, changed_by: str = "admin") -> dict:
 
     new_enabled = 0 if old["enabled"] else 1
     conn = _get_conn()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "UPDATE rules SET enabled = ?, version = version + 1, updated_at = ? WHERE id = ?",
         (new_enabled, now, rule_id)
@@ -1190,7 +1192,7 @@ def review_suggestion(
         raise ValueError(f"Suggestion already {suggestion['status']}")
 
     conn = _get_conn()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     if action == "approve":
         # Apply the suggestion
@@ -1299,7 +1301,7 @@ def _log_change(
     new_value: Optional[dict],
     changed_by: str
 ):
-    """Write a changelog entry."""
+    """Write a changelog entry. Uses same connection — caller's commit covers it."""
     conn = _get_conn()
     conn.execute(
         """INSERT INTO rule_changelog (rule_id, action, old_value, new_value, changed_by)
@@ -1312,7 +1314,7 @@ def _log_change(
             changed_by,
         )
     )
-    conn.commit()
+    conn.commit()  # Flush changelog entry promptly
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────

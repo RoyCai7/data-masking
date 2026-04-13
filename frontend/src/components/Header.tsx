@@ -31,6 +31,13 @@ export default function Header() {
     return () => clearInterval(interval);
   }, []);
 
+  // Listen for 401 auth errors to auto-open Settings
+  useEffect(() => {
+    const handler = () => setShowSettings(true);
+    window.addEventListener('api-key-required', handler);
+    return () => window.removeEventListener('api-key-required', handler);
+  }, []);
+
   return (
     <header className="bg-suse-green-dark text-white shadow-lg">
       <div className="max-w-6xl mx-auto px-4">

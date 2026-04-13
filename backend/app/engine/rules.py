@@ -6,10 +6,15 @@ Rules are now stored in SQLite and managed through RuleService.
 This module remains the public interface that masker.py imports from —
 keeping backward compatibility while switching the backing store.
 """
+import os
 import re
+import hashlib
 from dataclasses import dataclass
 from typing import List, Pattern, Optional
 from enum import Enum
+
+# Process-level salt for HASH strategy (changes each restart → non-reversible)
+_HASH_SALT = os.urandom(16)
 
 
 class MaskStrategy(Enum):
@@ -42,8 +47,7 @@ class MaskingRule:
                 return '*' * len(text)
             return text[:2] + '*' * (len(text) - 4) + text[-2:]
         elif self.strategy == MaskStrategy.HASH:
-            import hashlib
-            return hashlib.md5(text.encode()).hexdigest()[:8]
+            return hashlib.sha256(_HASH_SALT + text.encode()).hexdigest()[:12]
         return self.placeholder
 
 

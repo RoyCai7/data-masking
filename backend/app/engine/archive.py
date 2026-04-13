@@ -15,6 +15,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Maximum total decompressed size (2 GB) to prevent zip bombs
+MAX_EXTRACT_SIZE = 2 * 1024 * 1024 * 1024
+
 
 class ArchiveType(Enum):
     """Supported archive types"""
@@ -107,6 +110,35 @@ def is_text_file(filepath: str) -> bool:
     return False
 
 
+def _check_zip_traversal(zf: zipfile.ZipFile, extract_to: str):
+    """Reject ZIP files with path traversal entries (e.g. ../../etc/passwd)"""
+    abs_target = os.path.realpath(extract_to)
+    for member in zf.namelist():
+        member_path = os.path.realpath(os.path.join(extract_to, member))
+        if not member_path.startswith(abs_target + os.sep) and member_path != abs_target:
+            raise ValueError(f"ZIP path traversal detected: {member}")
+
+
+def _check_zip_bomb(zf: zipfile.ZipFile):
+    """Reject ZIP files whose total decompressed size exceeds MAX_EXTRACT_SIZE"""
+    total = sum(info.file_size for info in zf.infolist())
+    if total > MAX_EXTRACT_SIZE:
+        raise ValueError(
+            f"ZIP bomb detected: decompressed size {total:,} bytes exceeds "
+            f"limit of {MAX_EXTRACT_SIZE:,} bytes"
+        )
+
+
+def _check_tar_bomb(tar: tarfile.TarFile):
+    """Reject tar files whose total decompressed size exceeds MAX_EXTRACT_SIZE"""
+    total = sum(m.size for m in tar.getmembers() if m.isfile())
+    if total > MAX_EXTRACT_SIZE:
+        raise ValueError(
+            f"Tar bomb detected: decompressed size {total:,} bytes exceeds "
+            f"limit of {MAX_EXTRACT_SIZE:,} bytes"
+        )
+
+
 def extract_archive(archive_path: str, extract_to: str) -> Tuple[ArchiveType, List[str]]:
     """
     Extract an archive to a directory
@@ -124,26 +156,32 @@ def extract_archive(archive_path: str, extract_to: str) -> Tuple[ArchiveType, Li
     try:
         if archive_type in (ArchiveType.TAR_GZ, ArchiveType.TGZ):
             with tarfile.open(archive_path, 'r:gz') as tar:
+                _check_tar_bomb(tar)
                 tar.extractall(extract_to, filter='data')
                 extracted_files = [os.path.join(extract_to, m.name) for m in tar.getmembers() if m.isfile()]
         
         elif archive_type == ArchiveType.TAR_BZ2:
             with tarfile.open(archive_path, 'r:bz2') as tar:
+                _check_tar_bomb(tar)
                 tar.extractall(extract_to, filter='data')
                 extracted_files = [os.path.join(extract_to, m.name) for m in tar.getmembers() if m.isfile()]
         
         elif archive_type == ArchiveType.TAR_XZ:
             with tarfile.open(archive_path, 'r:xz') as tar:
+                _check_tar_bomb(tar)
                 tar.extractall(extract_to, filter='data')
                 extracted_files = [os.path.join(extract_to, m.name) for m in tar.getmembers() if m.isfile()]
         
         elif archive_type == ArchiveType.TAR:
             with tarfile.open(archive_path, 'r:') as tar:
+                _check_tar_bomb(tar)
                 tar.extractall(extract_to, filter='data')
                 extracted_files = [os.path.join(extract_to, m.name) for m in tar.getmembers() if m.isfile()]
         
         elif archive_type == ArchiveType.ZIP:
             with zipfile.ZipFile(archive_path, 'r') as zf:
+                _check_zip_traversal(zf, extract_to)
+                _check_zip_bomb(zf)
                 zf.extractall(extract_to)
                 extracted_files = [os.path.join(extract_to, name) for name in zf.namelist() 
                                    if not name.endswith('/')]
