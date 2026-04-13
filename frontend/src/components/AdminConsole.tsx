@@ -492,24 +492,24 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                       <button onClick={resetRuleForm} className="text-sm text-gray-500 hover:text-gray-700">New Rule</button>
                     )}
                   </div>
-                  <input disabled={isEditingRule} value={ruleForm.id} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, id: e.target.value }))} placeholder="rule_id" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 disabled:bg-gray-50" />
-                  <input value={ruleForm.name} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Rule name" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                  <input disabled={isEditingRule} value={ruleForm.id} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, id: e.target.value }))} placeholder="rule_id" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 disabled:bg-gray-50" />
+                  <input value={ruleForm.name} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, name: e.target.value }))} placeholder="Rule name" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
                   <div className="grid grid-cols-2 gap-3">
-                    <input value={ruleForm.category} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, category: e.target.value }))} placeholder="category" className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                    <select value={ruleForm.strategy} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev) => ({ ...prev, strategy: e.target.value as RuleDetail['strategy'] }))} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+                    <input value={ruleForm.category} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, category: e.target.value }))} placeholder="category" className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                    <select value={ruleForm.strategy} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, strategy: e.target.value as RuleDetail['strategy'] }))} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
                       <option value="placeholder">placeholder</option>
                       <option value="partial">partial</option>
                       <option value="asterisk">asterisk</option>
                       <option value="hash">hash</option>
                     </select>
                   </div>
-                  <input value={ruleForm.flags} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, flags: e.target.value }))} placeholder="Regex flags, e.g. IGNORECASE" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                  <input value={ruleForm.placeholder} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, placeholder: e.target.value }))} placeholder="Replacement text" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                  <textarea value={ruleForm.pattern} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setRuleForm((prev) => ({ ...prev, pattern: e.target.value }))} placeholder="Regex pattern" rows={5} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono" />
+                  <input value={ruleForm.flags} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, flags: e.target.value }))} placeholder="Regex flags, e.g. IGNORECASE" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                  <input value={ruleForm.placeholder} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, placeholder: e.target.value }))} placeholder="Replacement text" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                  <textarea value={ruleForm.pattern} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, pattern: e.target.value }))} placeholder="Regex pattern" rows={5} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono" />
                   <div className="grid grid-cols-2 gap-3">
-                    <input type="number" min={0} max={100} value={ruleForm.weight} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, weight: Number(e.target.value) || 0 }))} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                    <input type="number" min={0} max={100} value={ruleForm.weight} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, weight: Number(e.target.value) || 0 }))} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
                     <label className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700">
-                      <input type="checkbox" checked={ruleForm.enabled} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev) => ({ ...prev, enabled: e.target.checked }))} />
+                      <input type="checkbox" checked={ruleForm.enabled} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, enabled: e.target.checked }))} />
                       Enabled
                     </label>
                   </div>
