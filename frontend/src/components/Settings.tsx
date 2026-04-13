@@ -25,7 +25,7 @@ interface SettingsProps {
 
 export default function Settings({ onClose }: SettingsProps) {
   const [apiKey, setApiKeyState] = useState(getApiKey());
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(true);
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
