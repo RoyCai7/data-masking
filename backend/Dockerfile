@@ -6,15 +6,19 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Create non-root user and storage directory
+RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser \
+    && mkdir -p /tmp/masking-service && chown appuser:appuser /tmp/masking-service \
+    && mkdir -p /app/data && chown appuser:appuser /app/data
 
-# Create storage directory
-RUN mkdir -p /tmp/masking-service
+# Copy application code
+COPY --chown=appuser:appuser . .
 
 # Environment variables
 ENV MAX_WORKERS=16
 ENV PYTHONUNBUFFERED=1
+
+USER appuser
 
 # Expose port
 EXPOSE 8000

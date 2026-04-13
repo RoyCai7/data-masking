@@ -8,8 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import asyncio
+import json
 import logging
 import os
+import time
+from datetime import datetime, timezone
 
 from app.api import mask, status, rules
 from app.core.executor import shutdown_executor
@@ -17,11 +20,41 @@ from app.core.auth import APIKeyMiddleware, AUTH_ENABLED
 from app.core.session import cleanup_expired_sessions
 from app.engine.rule_service import rule_service
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+
+# ── Structured JSON Logging ──────────────────────────────────────────
+class JSONFormatter(logging.Formatter):
+    """Emit each log record as a single JSON line."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry: dict = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0] is not None:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        # Propagate extra fields if any (e.g. request_id, session_id)
+        for key in ("request_id", "session_id", "client_ip", "method", "path", "status_code", "duration_ms"):
+            value = getattr(record, key, None)
+            if value is not None:
+                log_entry[key] = value
+        return json.dumps(log_entry, ensure_ascii=False)
+
+
+def _configure_logging() -> None:
+    """Replace default logging with structured JSON output."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(JSONFormatter())
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    # Quiet noisy third-party loggers
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 # Frontend dist path
@@ -82,6 +115,31 @@ app.add_middleware(
 # API Key authentication middleware
 app.add_middleware(APIKeyMiddleware)
 
+
+# ── Request Logging Middleware ────────────────────────────────────────
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log every request with method, path, status, client IP, and duration."""
+    start = time.monotonic()
+    response = await call_next(request)
+    duration_ms = round((time.monotonic() - start) * 1000, 1)
+    req_logger = logging.getLogger("app.access")
+    req_logger.info(
+        "%s %s %s %.1fms",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        extra={
+            "method": request.method,
+            "path": str(request.url.path),
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+            "client_ip": request.client.host if request.client else None,
+        },
+    )
+    return response
+
 # Include routers FIRST (before catch-all)
 # Rules router FIRST — so /rules, /rules/suggestions, /rules/changelog
 # take precedence over mask.py's catch-all endpoints
@@ -108,7 +166,8 @@ async def serve_spa(request: Request, full_path: str):
     """Serve SPA for all other routes (excluding /api/*)"""
     # Skip API routes
     if full_path.startswith("api/"):
-        return {"detail": "Not Found"}
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
     
     # Check if file exists in frontend dist
     file_path = os.path.join(FRONTEND_DIR, full_path)

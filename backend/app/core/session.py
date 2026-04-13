@@ -13,7 +13,7 @@ import shutil
 
 # Session storage
 _sessions: Dict[str, 'SessionData'] = {}
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 # UUID v4 pattern for session ID validation
 _UUID_RE = _re.compile(

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
 import TaskList from './components/TaskList';
@@ -10,6 +10,8 @@ function App() {
   const [selectedTask, setSelectedTask] = useState<TaskInfo | null>(null);
   const [selectedReport, setSelectedReport] = useState<MaskingReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
 
   // Fetch tasks on mount
   const fetchTasks = useCallback(async () => {
@@ -26,31 +28,44 @@ function App() {
     fetchTasks();
   }, [fetchTasks]);
 
-  // Poll for task updates
+  // Poll for task updates — single-flight setTimeout chain
   useEffect(() => {
-    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing');
-    
-    if (pendingTasks.length === 0) return;
+    const hasPending = tasks.some(t => t.status === 'pending' || t.status === 'processing');
+    if (!hasPending) return;
 
-    const interval = setInterval(async () => {
-      const updatedTasks = await Promise.all(
-        tasks.map(async (task) => {
-          if (task.status === 'pending' || task.status === 'processing') {
-            try {
-              const updated = await getTaskStatus(task.task_id);
-              return { ...task, ...updated };
-            } catch {
-              return task;
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      const current = tasksRef.current;
+      try {
+        const updatedTasks = await Promise.all(
+          current.map(async (task) => {
+            if (task.status === 'pending' || task.status === 'processing') {
+              try {
+                const updated = await getTaskStatus(task.task_id);
+                return { ...task, ...updated };
+              } catch {
+                return task;
+              }
             }
-          }
-          return task;
-        })
-      );
-      setTasks(updatedTasks);
-    }, 1000);
+            return task;
+          })
+        );
+        if (!cancelled) setTasks(updatedTasks);
+      } catch {
+        // ignore
+      }
+      if (!cancelled) {
+        timerId = window.setTimeout(poll, 1500);
+      }
+    };
 
-    return () => clearInterval(interval);
-  }, [tasks]);
+    let timerId = window.setTimeout(poll, 1500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+    };
+  }, [tasks.some(t => t.status === 'pending' || t.status === 'processing')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUploadComplete = async () => {
     await fetchTasks();

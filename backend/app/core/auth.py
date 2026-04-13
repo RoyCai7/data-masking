@@ -203,7 +203,8 @@ def validate_key(api_key: str) -> dict:
             if date.fromisoformat(expires_at) < date.today():
                 raise HTTPException(status_code=403, detail="API Key has expired")
         except ValueError:
-            pass  # Invalid date format, skip expiry check
+            # Malformed expiry date — reject the key for safety
+            raise HTTPException(status_code=403, detail="API Key has invalid expiry date")
 
     return key_data
 

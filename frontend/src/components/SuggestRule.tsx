@@ -6,6 +6,7 @@ import {
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
 import { submitRuleSuggestion, getRules, MaskingRule } from '../services/api';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface SuggestRuleProps {
   onClose: () => void;
@@ -14,6 +15,7 @@ interface SuggestRuleProps {
 type SuggestionAction = 'create' | 'modify' | 'disable';
 
 export default function SuggestRule({ onClose }: SuggestRuleProps) {
+  const dialogRef = useModalA11y(onClose);
   const [action, setAction] = useState<SuggestionAction>('create');
   const [ruleId, setRuleId] = useState('');
   const [name, setName] = useState('');
@@ -86,11 +88,16 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
       onClick={onClose}
     >
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Suggest a Rule Change"
+        tabIndex={-1}
         initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.96, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto outline-none"
       >
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center space-x-3">

@@ -18,12 +18,14 @@ import {
   rotateMyKey,
   KeyInfo,
 } from '../services/api';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface SettingsProps {
   onClose: () => void;
 }
 
 export default function Settings({ onClose }: SettingsProps) {
+  const dialogRef = useModalA11y(onClose);
   const [apiKey, setApiKeyState] = useState(getApiKey());
   const [showApiKey, setShowApiKey] = useState(true);
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
@@ -98,10 +100,15 @@ export default function Settings({ onClose }: SettingsProps) {
       onClick={onClose}
     >
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="API Key Settings"
+        tabIndex={-1}
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
+        className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

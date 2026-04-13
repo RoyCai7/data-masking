@@ -103,20 +103,34 @@ async def mask_file(
     )
     add_task(session_id, task)
     
-    # Save uploaded file temporarily
-    temp_file_path = session.storage_path / f"upload_{task_id}_{file.filename}"
+    # Save uploaded file temporarily — sanitize filename to prevent path traversal
+    safe_filename = os.path.basename(file.filename or "upload").strip() or "upload"
+    temp_file_path = session.storage_path / f"upload_{task_id}_{safe_filename}"
     try:
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB."
-            )
+        # Stream file in chunks to avoid OOM on large uploads
+        total_bytes = 0
+        chunk_size = 1024 * 1024  # 1 MB
         with open(temp_file_path, 'wb') as f:
-            f.write(content)
+            while True:
+                chunk = await file.read(chunk_size)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_SIZE:
+                    f.close()
+                    temp_file_path.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB."
+                    )
+                f.write(chunk)
+    except HTTPException:
+        update_task(session_id, task_id, status="failed", error="File too large")
+        raise
     except Exception as e:
-        update_task(session_id, task_id, status="failed", error=f"Failed to save file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+        logger.error(f"Failed to save uploaded file: {e}")
+        update_task(session_id, task_id, status="failed", error="Failed to save file")
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
     
     # Parse whitelist
     whitelist_items = [w.strip() for w in whitelist.split(',') if w.strip()]

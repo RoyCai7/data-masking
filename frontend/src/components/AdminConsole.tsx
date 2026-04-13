@@ -31,6 +31,7 @@ import {
   toggleRule,
   updateRule,
 } from '../services/api';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 type AdminTab = 'keys' | 'rules' | 'suggestions' | 'history';
 
@@ -58,6 +59,7 @@ const tabs: Array<{ id: AdminTab; label: string }> = [
 ];
 
 export default function AdminConsole({ onClose }: AdminConsoleProps) {
+  const dialogRef = useModalA11y(onClose);
   const [activeTab, setActiveTab] = useState<AdminTab>('keys');
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -359,11 +361,16 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
       onClick={onClose}
     >
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Admin Console"
+        tabIndex={-1}
         initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.96, opacity: 0 }}
         onClick={(e: MouseEvent<HTMLDivElement>) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-xl w-full max-w-7xl h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-7xl h-[90vh] overflow-hidden flex flex-col outline-none"
       >
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center space-x-3">
