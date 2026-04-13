@@ -5,6 +5,8 @@ import {
   ArrowPathIcon,
   ClipboardIcon,
   CheckIcon,
+  EyeIcon,
+  EyeSlashIcon,
   ExclamationTriangleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
@@ -23,6 +25,7 @@ interface SettingsProps {
 
 export default function Settings({ onClose }: SettingsProps) {
   const [apiKey, setApiKeyState] = useState(getApiKey());
+  const [showApiKey, setShowApiKey] = useState(false);
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [isRotating, setIsRotating] = useState(false);
@@ -125,12 +128,24 @@ export default function Settings({ onClose }: SettingsProps) {
             </label>
             <div className="flex space-x-2">
               <input
-                type="password"
+                type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKeyState(e.target.value)}
                 placeholder="dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none transition-all text-sm font-mono"
               />
+              <button
+                type="button"
+                onClick={() => setShowApiKey((value) => !value)}
+                className="px-3 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                title={showApiKey ? 'Hide API key' : 'Show API key'}
+              >
+                {showApiKey ? (
+                  <EyeSlashIcon className="w-5 h-5" />
+                ) : (
+                  <EyeIcon className="w-5 h-5" />
+                )}
+              </button>
               <button
                 onClick={handleSaveKey}
                 className="px-4 py-2.5 bg-suse-green text-white rounded-lg hover:bg-suse-green/90 transition-colors text-sm font-medium"
