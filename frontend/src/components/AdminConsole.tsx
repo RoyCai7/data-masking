@@ -465,10 +465,10 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
               <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">Existing Keys</h3>
-                  <span className="text-sm text-gray-500">{keys.length} total</span>
+                  <span className="text-sm text-gray-500">{keys.filter(k => k.enabled).length} total</span>
                 </div>
                 <div className="divide-y divide-gray-100">
-                  {keys.map((key) => (
+                  {keys.filter(k => k.enabled).map((key) => (
                     <div key={`${key.name}-${key.key || key.key_preview}`} className="px-5 py-4 flex items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2">
