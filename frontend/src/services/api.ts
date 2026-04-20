@@ -162,6 +162,7 @@ export interface ManagedKeyInfo {
   created_at: string;
   expires_at: string;
   key_preview: string;
+  key?: string;
 }
 
 export interface SystemStatus {
