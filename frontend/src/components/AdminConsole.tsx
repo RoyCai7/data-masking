@@ -54,7 +54,7 @@ const emptyRule: RuleDetail = {
 const tabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'keys', label: 'Keys' },
   { id: 'rules', label: 'Rules' },
-  { id: 'suggestions', label: 'Suggestions' },
+  { id: 'suggestions', label: 'Rule approve' },
   { id: 'history', label: 'History' },
 ];
 
