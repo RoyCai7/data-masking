@@ -54,7 +54,7 @@ const emptyRule: RuleDetail = {
 const tabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'keys', label: 'Keys' },
   { id: 'rules', label: 'Rules' },
-  { id: 'suggestions', label: 'Rule approve' },
+  { id: 'suggestions', label: 'Rule Approvals' },
   { id: 'history', label: 'History' },
 ];
 
@@ -573,7 +573,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
           ) : activeTab === 'suggestions' ? (
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <h3 className="font-semibold text-gray-900">Rule Suggestions</h3>
+                <h3 className="font-semibold text-gray-900">Rule Approvals</h3>
                 <select value={suggestionStatus} onChange={(e: ChangeEvent<HTMLSelectElement>) => setSuggestionStatus(e.target.value as typeof suggestionStatus)} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white w-full md:w-48">
                   <option value="pending">pending</option>
                   <option value="approved">approved</option>
