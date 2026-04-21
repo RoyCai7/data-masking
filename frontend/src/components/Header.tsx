@@ -104,10 +104,10 @@ export default function Header() {
             <button
               onClick={() => setShowSuggestRule(true)}
               className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
-              title="Rule"
+              title="New Rule"
             >
               <LightBulbIcon className="w-4 h-4" />
-              <span>Rule</span>
+              <span>New Rule</span>
             </button>
 
             <button
