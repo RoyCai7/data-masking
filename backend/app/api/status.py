@@ -90,6 +90,7 @@ async def list_api_keys(request: Request):
             "created_at": k["created_at"],
             "expires_at": k.get("expires_at"),
             "key_preview": k["key"][:8] + "..." + k["key"][-4:],
+            "key": k["key"],
         })
 
     return {"total": len(keys), "keys": keys}

@@ -45,3 +45,8 @@ backend/rules.db
 # Temp files
 /tmp/
 *.tmp
+docs/*.pdf
+mask.py
+test_data.txt
+update_rules.py
+apply_fixes.py
