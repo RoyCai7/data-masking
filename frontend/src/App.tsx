@@ -97,6 +97,17 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <Header />
       
+      {/* Disclaimer Banner */}
+      <div className="bg-amber-50 border-b border-amber-200">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-start gap-3">
+          <span className="text-amber-500 text-lg mt-0.5 shrink-0">⚠️</span>
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">免责声明：</span>
+            本工具仅用于辅助脱敏处理，不保证完全消除所有敏感信息。脱敏结果仅供参考，请勿将其作为数据安全合规的唯一依据。上传的文件仅在当前会话中处理。使用本服务即表示您已知悉并接受上述风险。
+          </p>
+        </div>
+      </div>
+
       <main className="max-w-6xl mx-auto px-4 py-8">
         {selectedTask ? (
           <ResultView
