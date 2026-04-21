@@ -103,7 +103,7 @@ function App() {
           <span className="text-amber-500 text-lg mt-0.5 shrink-0">⚠️</span>
           <p className="text-sm text-amber-800">
             <span className="font-semibold">Disclaimer: </span>
-            This tool is intended to assist with data masking only and does not guarantee the complete removal of all sensitive information. Results are for reference purposes and should not be used as the sole basis for data security compliance. Uploaded files are processed within the current session only — do not upload real production data. By using this service, you acknowledge and accept these limitations.
+            This tool is intended to assist with data masking, but does not guarantee the complete removal of all sensitive information. Always perform a manual review of the masked output before sharing or publishing. Do not rely solely on this tool for data security compliance.
           </p>
         </div>
       </div>
