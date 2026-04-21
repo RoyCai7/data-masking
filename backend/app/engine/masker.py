@@ -94,10 +94,7 @@ class MaskingEngine:
         
         if whitelist is None:
             whitelist = []
-        
-        lines = content.split('\n')
-        total_lines = len(lines)
-        
+
         # Initialize stats for each rule
         stats_map: Dict[str, RuleStats] = {
             rule.id: RuleStats(
@@ -106,7 +103,52 @@ class MaskingEngine:
             )
             for rule in rules
         }
-        
+
+        # ── Full-content pre-pass for multiline (DOTALL) rules ──────────────
+        # Line-by-line processing cannot match patterns that span multiple lines
+        # (e.g. SSH/PGP private key blocks). Rules with re.DOTALL are applied
+        # against the full content first, then removed from the line-by-line pass.
+        import re as _re
+        all_rules = rules  # keep reference for risk scoring
+        multiline_rules = [r for r in rules if r.pattern.flags & _re.DOTALL]
+        line_rules = [r for r in rules if not (r.pattern.flags & _re.DOTALL)]
+        all_multiline_matches: List[MatchInfo] = []
+
+        for rule in multiline_rules:
+            # Capture rule and running content snapshot for correct line numbers
+            def _make_replacer(_rule, _matches, _whitelist):
+                def _replacer(match):
+                    original = match.group(0)
+                    is_whitelisted = any(w.lower() in original.lower() for w in _whitelist)
+                    # Line number is relative to content *before* this substitution
+                    line_number = match.string[:match.start()].count('\n') + 1
+                    if is_whitelisted:
+                        _matches.append(MatchInfo(
+                            line_number=line_number, original=original,
+                            masked=original, rule_id="__whitelist__",
+                            start_pos=match.start(), end_pos=match.end()
+                        ))
+                        return original
+                    masked = _rule.mask(original)
+                    _matches.append(MatchInfo(
+                        line_number=line_number, original=original,
+                        masked=masked, rule_id=_rule.id,
+                        start_pos=match.start(), end_pos=match.end()
+                    ))
+                    return masked
+                return _replacer
+
+            content = rule.pattern.sub(
+                _make_replacer(rule, all_multiline_matches, whitelist),
+                content
+            )
+
+        lines = content.split('\n')
+        total_lines = len(lines)
+
+        # Use only non-DOTALL rules for the line-by-line phase
+        rules = line_rules
+
         # Decide processing mode based on file size
         if total_lines > self.chunk_size:
             # Parallel processing for large files
@@ -121,7 +163,8 @@ class MaskingEngine:
             if progress_callback:
                 progress_callback(100)
         
-        # Aggregate statistics
+        # Aggregate statistics (include pre-pass multiline matches)
+        all_matches = all_multiline_matches + list(all_matches)
         total_matches = 0
         whitelist_skipped = 0
         
@@ -132,8 +175,9 @@ class MaskingEngine:
                 total_matches += 1
                 stats_map[match_info.rule_id].add_match(match_info)
         
-        # Calculate risk score
-        risk_score = self._calculate_risk_score(stats_map, rules, total_lines)
+        # Calculate risk score — use all_rules (includes DOTALL rules) so that
+        # multiline matches contribute their weight to the score correctly.
+        risk_score = self._calculate_risk_score(stats_map, all_rules, total_lines)
         risk_level = self._get_risk_level(risk_score)
         
         processing_time_ms = (time.time() - start_time) * 1000
