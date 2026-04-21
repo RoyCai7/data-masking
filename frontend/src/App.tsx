@@ -102,8 +102,8 @@ function App() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-start gap-3">
           <span className="text-amber-500 text-lg mt-0.5 shrink-0">⚠️</span>
           <p className="text-sm text-amber-800">
-            <span className="font-semibold">免责声明：</span>
-            本工具仅用于辅助脱敏处理，不保证完全消除所有敏感信息。脱敏结果仅供参考，请勿将其作为数据安全合规的唯一依据。上传的文件仅在当前会话中处理。使用本服务即表示您已知悉并接受上述风险。
+            <span className="font-semibold">Disclaimer: </span>
+            This tool is intended to assist with data masking only and does not guarantee the complete removal of all sensitive information. Results are for reference purposes and should not be used as the sole basis for data security compliance. Uploaded files are processed within the current session only — do not upload real production data. By using this service, you acknowledge and accept these limitations.
           </p>
         </div>
       </div>
