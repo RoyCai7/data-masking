@@ -14,8 +14,8 @@
 ## 📚 Documentation
 
 - [User & Admin Operation Guide](docs/user-admin-operation-guide.md)
-- [5-Minute Quick Start Guide](docs/quick-start-guide.md)
-- [Project Docs Index](docs/README.md)
+
+> For testing and daily use, treat [docs/user-admin-operation-guide.md](docs/user-admin-operation-guide.md) as the single source of truth. Other documents may be outdated or intended for internal reference only.
 
 ## ✨ Features
 

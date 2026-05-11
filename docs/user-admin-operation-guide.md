@@ -1,5 +1,7 @@
 # SUSE Data Masking Service 使用手册
 
+> 本文档是当前唯一推荐提供给测试者和最终使用者的操作文档。其他说明文档如与本文档冲突，应以本文档为准。
+
 ## 1. 文档目标
 
 本文档基于当前已部署的 SUSE Data Masking Service，说明两类角色的使用方法：
@@ -36,6 +38,17 @@ API Base URL：
 交互式 API 文档：
 
 - `http://10.146.15.188:8080/docs`
+
+---
+
+## 2.4 重要说明
+
+在开始使用前，请注意以下几点：
+
+- 本系统用于辅助脱敏，**不能保证 100% 去除所有敏感信息**
+- 在分享、上传或发布脱敏结果前，**必须人工复核输出内容**
+- Web 端历史任务依赖浏览器中的 `X-Session-ID`
+- Session 默认 **2 小时过期**，过期后任务与临时文件可能被自动清理
 
 ---
 
@@ -102,9 +115,17 @@ X-Session-ID: 5f6fd5de-7d1f-4e6f-a9f5-8fa4a8bb4b2f
 
 用于权限控制。
 
-- 公共接口：无需 API Key 也可访问
-- 管理接口：必须携带 `X-API-Key`
-- 个人密钥接口：必须携带 `X-API-Key`
+- 默认部署下，**只有少数公共接口无需 API Key**
+- 大多数业务接口都需要携带 `X-API-Key`
+- 管理员接口除 `X-API-Key` 外，还要求 key 角色为 `admin`
+
+可按下表理解：
+
+| 接口类型 | 是否需要 `X-API-Key` | 典型接口 |
+|------|------|------|
+| 公共接口 | 否 | `/api/v1/status`、`/api/v1/rules`、`/api/v1/session` |
+| 普通受保护接口 | 是 | `/api/v1/mask`、`/api/v1/task/{task_id}`、`/api/v1/tasks`、`/api/v1/download/{task_id}`、`/api/v1/report/{task_id}`、`/api/v1/keys/me`、`/api/v1/keys/rotate` |
+| 管理员接口 | 是，且必须为 admin | `/api/v1/keys`、`/api/v1/keys/disable`、`/api/v1/rules` 的增删改、`/api/v1/rules-import`、`/api/v1/rules-export`、`/api/v1/rules/changelog` |
 
 示例：
 
@@ -123,6 +144,8 @@ X-API-Key: dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 访问：
 
 - `http://10.146.15.188:8080`
+
+如需执行上传、查询任务、下载结果等操作，请先在页面右上角 `Key` 中保存有效的 API Key。
 
 ### 步骤 2：上传文件
 
@@ -143,6 +166,7 @@ X-API-Key: dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 - `.yml`
 - `.ini`
 - `.conf`
+- `.cfg`
 
 ### 归档文件
 
@@ -268,6 +292,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/session
 
 ```bash
 curl -X POST http://10.146.15.188:8080/api/v1/mask \
+  -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -F "file=@./sample.log" \
   -F "whitelist=localhost,127.0.0.1"
@@ -289,6 +314,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/mask \
 
 ```bash
 curl http://10.146.15.188:8080/api/v1/task/<task_id> \
+  -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
 
@@ -296,6 +322,7 @@ curl http://10.146.15.188:8080/api/v1/task/<task_id> \
 
 ```bash
 curl http://10.146.15.188:8080/api/v1/tasks \
+  -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
 
@@ -303,6 +330,7 @@ curl http://10.146.15.188:8080/api/v1/tasks \
 
 ```bash
 curl http://10.146.15.188:8080/api/v1/download/<task_id> \
+  -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -o masked_output.dat
 ```
@@ -311,8 +339,15 @@ curl http://10.146.15.188:8080/api/v1/download/<task_id> \
 
 ```bash
 curl http://10.146.15.188:8080/api/v1/report/<task_id> \
+  -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
+
+说明：
+
+- `/api/v1/session` 为公共接口，可不带 `X-API-Key`
+- 上传、查状态、列任务、下载和报告接口在默认部署下都需要 `X-API-Key`
+- 任务相关接口同时需要稳定使用同一个 `X-Session-ID`
 
 ---
 
@@ -330,10 +365,17 @@ curl http://10.146.15.188:8080/api/v1/status
 curl http://10.146.15.188:8080/api/v1/rules
 ```
 
-### 查看单条规则详情
+说明：
+
+- `GET /api/v1/rules` 为公共接口
+- `GET /api/v1/rules/{rule_id}` 在当前默认认证配置下**不应视为公共接口**
+- 如果需要查看单条规则详情，建议携带有效 `X-API-Key`
+
+示例：
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/ipv4
+curl http://10.146.15.188:8080/api/v1/rules/ipv4 \
+  -H "X-API-Key: <your_api_key>"
 ```
 
 ---
@@ -419,10 +461,19 @@ python generate_key.py create --name "Admin User" --role admin
 管理员在 Web 中主要用于：
 
 - 设置自己的 API Key
-- 访问 Swagger 文档测试管理接口
+- 打开 `Admin Console`
+- 在 Web 中管理 key、规则、审批建议、查看变更历史
 - 使用普通用户上传能力验证规则效果
+- 访问 Swagger 文档测试管理接口
 
-当前前端主要提供文件脱敏与个人 key 管理；规则管理类操作更适合通过 Swagger 或 API 调用完成。
+当前版本前端已提供 `Admin Console`，可执行以下典型管理操作：
+
+- `Keys`：创建 key、查看 key、禁用 key
+- `Rules`：创建规则、修改规则、启用/禁用规则、删除自定义规则、导入导出规则
+- `Rule Approvals`：审批或拒绝用户提交的规则建议
+- `History`：查看规则变更历史
+
+对于批量操作、调试请求体或高级排障，仍建议结合 Swagger 或 `curl` 使用。
 
 ---
 
@@ -497,8 +548,14 @@ curl 'http://10.146.15.188:8080/api/v1/rules?category=network'
 ### 查看单条规则详情
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/aws_access_key
+curl http://10.146.15.188:8080/api/v1/rules/aws_access_key \
+  -H "X-API-Key: <admin_api_key>"
 ```
+
+说明：
+
+- 在当前默认认证配置下，`GET /api/v1/rules/{rule_id}` 不应视为公共接口
+- 建议管理员查看单条规则详情时始终携带有效 `X-API-Key`
 
 ---
 
@@ -678,10 +735,18 @@ curl 'http://10.146.15.188:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
 
 ### 规则存储位置
 
-服务器默认数据库文件：
+规则数据库路径由环境变量 `RULES_DB_PATH` 决定。
+
+如果未配置该变量，代码默认使用：
 
 ```text
-/opt/data-masking/backend/rules.db
+backend/rules.db
+```
+
+当前 Docker Compose 部署配置为：
+
+```text
+/app/data/rules.db
 ```
 
 ### 存储内容
@@ -712,8 +777,9 @@ curl 'http://10.146.15.188:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
 2. 点击右上角 `Key`，保存自己的 API Key
 3. 上传文件
 4. 查看结果
-5. 下载脱敏文件和报告
-6. 如发现规则问题，提交建议
+5. 人工复核脱敏结果
+6. 下载脱敏文件和报告
+7. 如发现规则问题，提交建议
 
 ## 8.2 管理员推荐流程
 
@@ -740,6 +806,7 @@ curl 'http://10.146.15.188:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
 
 - 点右上角 `Key`
 - 重新粘贴有效 key
+- 确认调用的是受保护接口而不是公共接口
 - 点击 `Save`
 
 ## 9.2 上传时报 413
@@ -758,11 +825,13 @@ curl 'http://10.146.15.188:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
 原因：
 
 - 当前浏览器保存的 `X-Session-ID` 与当时上传时不同
+- Session 默认 2 小时过期，过期后任务数据可能已被清理
 
 处理：
 
 - 尽量在同一浏览器会话中操作
 - API 调用时固定使用同一个 `X-Session-ID`
+- 重要结果请及时下载，不要长期依赖浏览器中的临时任务记录
 
 ## 9.4 规则改了但没有生效
 
@@ -798,6 +867,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/session
 
 # 上传文件
 curl -X POST http://10.146.15.188:8080/api/v1/mask \
+  -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -F "file=@./sample.log"
 ```
