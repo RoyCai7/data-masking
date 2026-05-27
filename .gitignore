@@ -50,3 +50,7 @@ mask.py
 test_data.txt
 update_rules.py
 apply_fixes.py
+
+# Playwright test artifacts
+frontend/playwright-report/
+frontend/test-results/
