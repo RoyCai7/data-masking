@@ -117,7 +117,7 @@ class TestRuleCRUD:
     @pytest.mark.asyncio
     async def test_update_nonexistent_fails(self, client):
         resp = await client.put("/api/v1/rules/nonexistent_xyz", json={"name": "x"})
-        assert resp.status_code == 400
+        assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_custom_rule(self, client):

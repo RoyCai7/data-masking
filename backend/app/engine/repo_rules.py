@@ -80,7 +80,7 @@ BUILTIN_RULES = [
         "id": "phone_intl",
         "name": "Phone Number (International)",
         "category": "pii",
-        "pattern": r"\+?[1-9]\d{0,2}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}",
+        "pattern": r"\+?[1-9]\d{0,2}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{4,9}(?!\d)",
         "flags": "",
         "strategy": "placeholder",
         "placeholder": "[PHONE]",

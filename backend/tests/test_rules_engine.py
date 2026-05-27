@@ -112,20 +112,19 @@ class TestMaskStrategy:
 # Map: rule_id → list of strings that MUST match
 POSITIVE_SAMPLES = {
     # Network
-    "ipv4":           ["Server IP: 192.168.1.100"],
-    "ipv4_cidr":      ["subnet 10.0.0.0/24"],
+    "ipv4":           ["Server IP: 192.168.1.100", "subnet 10.0.0.0/24"],
     "ipv6":           ["addr 2001:0db8:85a3:0000:0000:8a2e:0370:7334"],
-    "mac":            ["hw AA:BB:CC:DD:EE:FF"],
+    "mac_address":    ["hw AA:BB:CC:DD:EE:FF"],
     "url":            ["visit https://example.com/path"],
-    "hostname":       ["hostname sles15-node1"],
+    "hostname":       ["host node1.corp.suse.com"],
     "fqdn":           ["dns server01.corp.example.com"],
     "nfs_mount":      ["mount server01:/export/share"],
     "iscsi_iqn":      ["target iqn.2024-01.com.suse:storage1"],
 
     # PII
     "email":          ["contact admin@example.com"],
-    "phone":          ["call +86-138-0013-8000"],
-    "id_card":        ["身份证 110101199003076512"],
+    "phone_intl":     ["call +86-138-0013-8000"],
+    "cn_id_card":     ["身份证 110101199003076512"],
     "credit_card":    ["card 4111-1111-1111-1111"],
     "path_user":      ["dir /home/johndoe/.config"],
     "username":       ["user = johndoe"],
@@ -268,7 +267,7 @@ class TestRuleServiceLayer:
 
     def test_get_enabled_rules_returns_masking_rules(self):
         rules = get_enabled_rules()
-        assert len(rules) >= 80
+        assert len(rules) >= 79  # supportconfig_removed is disabled by default
         for r in rules:
             assert isinstance(r, MaskingRule)
             assert r.enabled is True

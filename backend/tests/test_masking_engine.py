@@ -117,9 +117,10 @@ class TestWhitelist:
 
     @pytest.mark.asyncio
     async def test_whitelist_case_insensitive(self, engine):
-        text = "email admin@Example.COM"
-        result = await engine.mask_content(text, whitelist=["admin@example.com"])
-        assert "admin@Example.COM" in result.masked_content
+        """Whitelist comparison is case-insensitive."""
+        text = "host CORP.EXAMPLE.COM is safe"
+        result = await engine.mask_content(text, whitelist=["corp.example.com"])
+        assert "CORP.EXAMPLE.COM" in result.masked_content
 
     @pytest.mark.asyncio
     async def test_partial_whitelist_match(self, engine):

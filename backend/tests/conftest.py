@@ -37,6 +37,13 @@ def _isolate_db(tmp_path):
     db_file = str(tmp_path / "rules.db")
     os.environ["RULES_DB_PATH"] = db_file
 
+    # Patch the central db module (used by repo_rules, repo_orgs, etc.)
+    import app.engine.db as db_module
+    db_module.DB_PATH = Path(db_file)
+    db_module._local = threading.local()
+    # Re-run DB init so tables/migrations exist in the new tmp DB
+    db_module.init_db()
+
     import app.engine.repository as repo
     repo.DB_PATH = Path(db_file)
     # Force new thread-local connections for this test
