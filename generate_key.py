@@ -14,7 +14,14 @@ import argparse
 # Add backend to path so we can import app modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
-from app.core.auth import add_key, load_keys, disable_key, _load_keys_file
+from app.core.auth import add_key, disable_key
+from app.engine.repository import db_get_all_keys, init_db
+
+# Ensure DB is initialized (needed for local CLI usage)
+try:
+    init_db()
+except Exception:
+    pass
 
 
 def cmd_create(args):
@@ -45,20 +52,19 @@ def cmd_create(args):
 
 def cmd_list(args):
     """List all API keys"""
-    data = _load_keys_file()
-    keys = data.get("keys", [])
+    keys = db_get_all_keys()
 
     if not keys:
         print("No API keys found. Create one with: python generate_key.py create --name 'Your Name'")
         return
 
     print()
-    print(f"{'Name':<20} {'Role':<10} {'Status':<10} {'Created':<12} {'Expires':<12} {'Key (last 8)':<12}")
+    print(f"{'Name':<20} {'Role':<10} {'Status':<10} {'Created':<12} {'Expires':<12} {'Key prefix':<12}")
     print("-" * 76)
     for k in keys:
-        status = "✅ Active" if k.get("enabled", True) else "❌ Disabled"
-        key_preview = "..." + k["key"][-8:]
-        print(f"{k['name']:<20} {k.get('role', 'user'):<10} {status:<10} {k['created_at']:<12} {k.get('expires_at', 'never'):<12} {key_preview:<12}")
+        status = "\u2705 Active" if k.get("enabled", True) else "\u274c Disabled"
+        key_preview = k.get("key_prefix", "?") + "..."
+        print(f"{k['name']:<20} {k.get('role', 'user'):<10} {status:<10} {k['created_at'][:10]:<12} {(k.get('expires_at') or 'never'):<12} {key_preview:<12}")
     print()
     print(f"Total: {len(keys)} key(s)")
     print()

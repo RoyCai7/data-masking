@@ -181,6 +181,15 @@ class MaskingEngine:
         risk_level = self._get_risk_level(risk_score)
         
         processing_time_ms = (time.time() - start_time) * 1000
+
+        # Track which rules actually fired — bump use_count asynchronously
+        matched_rule_ids = [s.rule_id for s in stats_map.values() if s.matches > 0]
+        if matched_rule_ids:
+            try:
+                from app.engine.rule_service import rule_service as _rs
+                _rs.increment_use_count(matched_rule_ids)
+            except Exception:
+                pass  # Never fail a mask job due to stats tracking
         
         return MaskResult(
             masked_content='\n'.join(masked_lines),
@@ -505,6 +514,15 @@ class MaskingEngine:
             
             processing_time_ms = (time.time() - start_time) * 1000
             
+            # Track which rules actually fired — bump use_count
+            matched_rule_ids = [s.rule_id for s in all_stats.values() if s.matches > 0]
+            if matched_rule_ids:
+                try:
+                    from app.engine.rule_service import rule_service as _rs
+                    _rs.increment_use_count(matched_rule_ids)
+                except Exception:
+                    pass
+
             return MaskResult(
                 masked_content="",  # Archive content is in the file
                 total_matches=total_matches,

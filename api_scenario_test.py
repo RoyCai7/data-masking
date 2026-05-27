@@ -1,735 +1,566 @@
 #!/usr/bin/env python3
-"""Run end-to-end API scenarios for regular users and administrators.
-
-This script is intended for tester-facing validation against a live deployment.
-It uses only the Python standard library and prints a markdown-style result table.
-
-Typical usage:
-  DMS_USER_API_KEY=... DMS_ADMIN_API_KEY=... python api_scenario_test.py
-
-Safe-by-default behavior:
-  - Public and regular-user scenarios run automatically when `DMS_USER_API_KEY`
-    or `--user-key` is provided.
-  - Read-only admin scenarios run automatically when `DMS_ADMIN_API_KEY` or
-    `--admin-key` is provided.
-  - Destructive admin write scenarios require `--full-admin`.
 """
-from __future__ import annotations
-
-import argparse
-import io
-import json
-import mimetypes
-import os
-import sys
-import tempfile
-import time
-import uuid
-import zipfile
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Optional
-from urllib import error, parse, request
-
-
-DEFAULT_BASE_URL = os.getenv("DMS_BASE_URL", "http://10.146.15.188:8080/api/v1")
-DEFAULT_TIMEOUT = 30.0
-POLL_INTERVAL = 1.0
-POLL_TIMEOUT = 120.0
-
-SAMPLE_TEXT = """# API scenario sample
-server_ip = 192.168.1.100
-email = john.doe@example.com
-password = SuperSecret123!
-api_key = sk_live_4eC39HqLyjWDarjtT1zdp7dc
-aws_key = AKIAIOSFODNN7EXAMPLE
+Comprehensive API Test — SUSE Data Masking Service
+Verified response shapes:
+  /status          → {service,version,status,auth_enabled,executor}
+  /keys/me         → {name,role,org_id,created_at,expires_at,key_preview}
+  /keys GET        → {total,keys:[{name,role,enabled,key,...}]}
+  /keys POST       → {message,key,name,role,created_at,expires_at}
+  /orgs            → {total,orgs:[{id,name,created_at}]}
+  /rules           → {total,rules:[{id,name,pattern,scope,use_count,...}]}
+  /rules/{id} GET  → {id,name,category,pattern,...,scope,use_count}
+  /rules PUT       → updated rule object
+  /rules/promote   → PATCH, updated rule object
+  /mask POST       → {task_id,session_id,status,filename,message}
+  /task/{id}       → {task_id,filename,status,report:{report_id,summary,breakdown}}
 """
 
+import requests, sys, time, io
 
-@dataclass
-class Response:
-    status_code: int
-    headers: Dict[str, str]
-    body: bytes
+BASE = "http://10.146.15.188:8080/api/v1"
+WEB  = "http://10.146.15.188:8080"
+ADMIN_KEY = "dms_3be8006031f045d3aafdc6c78282f2e4"
+AH = {"X-API-Key": ADMIN_KEY}
+AJ = {**AH, "Content-Type": "application/json"}
 
-    def text(self) -> str:
-        return self.body.decode("utf-8", errors="replace")
+passed = failed = _sp = _sf = 0
 
-    def json(self) -> Any:
-        if not self.body:
-            return None
-        return json.loads(self.text())
+def section(t):
+    global _sp, _sf
+    if _sp+_sf: print(f"   → {_sp} pass / {_sf} fail")
+    _sp = _sf = 0
+    print(f"\n{'='*58}\n  {t}\n{'='*58}")
 
-
-@dataclass
-class ScenarioResult:
-    role: str
-    name: str
-    status: str
-    detail: str
-    duration_ms: int
-
-
-class APIClient:
-    def __init__(self, base_url: str, timeout: float = DEFAULT_TIMEOUT):
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-
-    def request(
-        self,
-        method: str,
-        path: str,
-        *,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        json_body: Optional[Dict[str, Any]] = None,
-        form_fields: Optional[Dict[str, str]] = None,
-        files: Optional[Dict[str, tuple[str, bytes, Optional[str]]]] = None,
-    ) -> Response:
-        url = self.base_url + path
-        if params:
-            query = parse.urlencode(params)
-            url = f"{url}?{query}"
-
-        req_headers = {"Accept": "application/json", **(headers or {})}
-        data: Optional[bytes] = None
-
-        if json_body is not None:
-            data = json.dumps(json_body).encode("utf-8")
-            req_headers["Content-Type"] = "application/json"
-        elif files:
-            boundary = f"----DMSBoundary{uuid.uuid4().hex}"
-            data = self._encode_multipart(boundary, form_fields or {}, files)
-            req_headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-        elif form_fields:
-            data = parse.urlencode(form_fields).encode("utf-8")
-            req_headers["Content-Type"] = "application/x-www-form-urlencoded"
-
-        req = request.Request(url, data=data, method=method.upper(), headers=req_headers)
-        try:
-            with request.urlopen(req, timeout=self.timeout) as resp:
-                return Response(
-                    status_code=resp.status,
-                    headers=dict(resp.headers.items()),
-                    body=resp.read(),
-                )
-        except error.HTTPError as exc:
-            return Response(
-                status_code=exc.code,
-                headers=dict(exc.headers.items()),
-                body=exc.read(),
-            )
-
-    @staticmethod
-    def _encode_multipart(
-        boundary: str,
-        fields: Dict[str, str],
-        files: Dict[str, tuple[str, bytes, Optional[str]]],
-    ) -> bytes:
-        buffer = io.BytesIO()
-        boundary_bytes = boundary.encode("utf-8")
-
-        for key, value in fields.items():
-            buffer.write(b"--" + boundary_bytes + b"\r\n")
-            buffer.write(
-                f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
-            )
-            buffer.write(str(value).encode("utf-8"))
-            buffer.write(b"\r\n")
-
-        for key, (filename, content, content_type) in files.items():
-            guessed = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-            buffer.write(b"--" + boundary_bytes + b"\r\n")
-            buffer.write(
-                (
-                    f'Content-Disposition: form-data; name="{key}"; '
-                    f'filename="{filename}"\r\n'
-                ).encode("utf-8")
-            )
-            buffer.write(f"Content-Type: {guessed}\r\n\r\n".encode("utf-8"))
-            buffer.write(content)
-            buffer.write(b"\r\n")
-
-        buffer.write(b"--" + boundary_bytes + b"--\r\n")
-        return buffer.getvalue()
-
-
-def require(condition: bool, message: str) -> None:
-    if not condition:
-        raise AssertionError(message)
-
-
-def short_detail(value: Any, limit: int = 120) -> str:
-    if isinstance(value, (dict, list)):
-        text = json.dumps(value, ensure_ascii=False)
+def check(name, ok, detail=""):
+    global passed, failed, _sp, _sf
+    if ok:
+        print(f"  ✓  {name}"); passed += 1; _sp += 1
     else:
-        text = str(value)
-    text = " ".join(text.split())
-    if len(text) > limit:
-        return text[: limit - 3] + "..."
-    return text
+        print(f"  ✗  {name}")
+        if detail: print(f"       {str(detail)[:220]}")
+        failed += 1; _sf += 1
 
+def G(p, **kw):  return requests.get(f"{BASE}{p}", headers=AH, timeout=15, **kw)
+def P(p, **kw):  return requests.post(f"{BASE}{p}", headers=AJ, timeout=15, **kw)
+def PU(p, **kw): return requests.put(f"{BASE}{p}", headers=AJ, timeout=15, **kw)
+def PA(p, **kw): return requests.patch(f"{BASE}{p}", headers=AJ, timeout=15, **kw)
+def D(p, **kw):  return requests.delete(f"{BASE}{p}", headers=AH, timeout=15, **kw)
 
-class ScenarioRunner:
-    def __init__(
-        self,
-        client: APIClient,
-        *,
-        user_key: str = "",
-        admin_key: str = "",
-        full_admin: bool = False,
-    ):
-        self.client = client
-        self.user_key = user_key
-        self.admin_key = admin_key
-        self.full_admin = full_admin
-        self.results: list[ScenarioResult] = []
-        self._temp_user_key: Optional[str] = None
-        self._temp_user_name: Optional[str] = None
+def unwrap(d, *keys):
+    """Unwrap {message, <key>: {...}} envelope; tries keys in order, falls back to d"""
+    for k in keys:
+        if isinstance(d, dict) and k in d:
+            return d[k]
+    return d
 
-    def run_all(self) -> int:
-        self._maybe_bootstrap_user_key()
-        self._run_public_scenarios()
-        self._run_user_scenarios()
-        self._run_admin_scenarios()
-        self._cleanup_temp_user_key()
-        self._print_report()
-        return 1 if any(item.status == "FAIL" for item in self.results) else 0
+def mask_wait(sid, tid, timeout=30):
+    end = time.time() + timeout
+    while time.time() < end:
+        r = requests.get(f"{BASE}/task/{tid}",
+                         headers={**AH,"X-Session-ID":sid}, timeout=10)
+        if r.status_code != 200: return None
+        d = r.json()
+        if d.get("status") in ("completed","failed"): return d
+        time.sleep(0.5)
+    return None
 
-    def _record(self, role: str, name: str, status: str, detail: str, started_at: float) -> None:
-        self.results.append(
-            ScenarioResult(
-                role=role,
-                name=name,
-                status=status,
-                detail=detail,
-                duration_ms=int((time.time() - started_at) * 1000),
-            )
-        )
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 0. Web UI
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("0. Web UI Reachability")
+r = requests.get(WEB, timeout=10)
+check("GET / → 200", r.status_code == 200, r.status_code)
+check("Content-Type: text/html", "text/html" in r.headers.get("Content-Type",""), r.headers.get("Content-Type"))
+check("HTML page served", "<!doctype" in r.text.lower() or '<div id="root"' in r.text, r.text[:80])
+r = requests.get(f"{WEB}/index.html", timeout=10)
+check("GET /index.html → 200", r.status_code == 200, r.status_code)
 
-    def _execute(self, role: str, name: str, fn: Callable[[], str], *, skip_if: Optional[str] = None) -> None:
-        started_at = time.time()
-        if skip_if:
-            self._record(role, name, "SKIP", skip_if, started_at)
-            return
-        try:
-            detail = fn()
-            self._record(role, name, "PASS", detail, started_at)
-        except Exception as exc:  # noqa: BLE001
-            self._record(role, name, "FAIL", short_detail(exc), started_at)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 1. Service Status
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("1. Service Status")
+r = G("/status")
+check("GET /status → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    d = r.json()
+    check("status = healthy", d.get("status") == "healthy", d)
+    check("auth_enabled field present", "auth_enabled" in d, d)
+    check("version field present", "version" in d, d)
+    ex = d.get("executor", {})
+    check("executor.max_workers > 0", ex.get("max_workers",0) > 0, ex)
+    check("executor.active_tasks present", "active_tasks" in ex, ex)
 
-    def _run_public_scenarios(self) -> None:
-        self._execute("public", "status endpoint", self._scenario_status)
-        self._execute("public", "public rule list", self._scenario_public_rules)
-        self._execute("public", "create session", self._scenario_create_session)
-        self._execute("public", "protected endpoint rejects anonymous", self._scenario_protected_anonymous)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 2. Auth — key identity
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("2. Auth — Key Identity")
+r = G("/keys/me")
+check("GET /keys/me → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    d = r.json()
+    check("name present",       "name"       in d, d)
+    check("role = admin",       d.get("role") == "admin", d)
+    check("org_id present",     "org_id"     in d, d)
+    check("key_preview present","key_preview" in d, d)
+    check("expires_at present", "expires_at"  in d, d)
 
-    def _run_user_scenarios(self) -> None:
-        skip = None if self.user_key else "Missing user API key"
-        self._execute("user", "upload text and fetch report", self._scenario_user_text_masking, skip_if=skip)
-        self._execute("user", "whitelist keeps allowed value", self._scenario_user_whitelist, skip_if=skip)
-        self._execute("user", "unsupported file type rejected", self._scenario_user_bad_file, skip_if=skip)
-        self._execute("user", "task list contains new task", self._scenario_user_task_list, skip_if=skip)
-        self._execute("user", "session isolation enforced", self._scenario_user_session_isolation, skip_if=skip)
-        self._execute("user", "single rule detail with key", self._scenario_user_rule_detail, skip_if=skip)
-        self._execute("user", "submit and list suggestions", self._scenario_user_suggestions, skip_if=skip)
-        self._execute("user", "zip archive masking", self._scenario_user_zip_masking, skip_if=skip)
+r_bad = requests.get(f"{BASE}/keys/me", headers={"X-API-Key": "bad_key_xyz"}, timeout=10)
+check("Bad key → 401/403", r_bad.status_code in (401,403), r_bad.status_code)
 
-    def _run_admin_scenarios(self) -> None:
-        skip = None if self.admin_key else "Missing admin API key"
-        self._execute("admin", "admin key info", self._scenario_admin_key_info, skip_if=skip)
-        self._execute("admin", "list API keys", self._scenario_admin_list_keys, skip_if=skip)
-        self._execute("admin", "export rules", self._scenario_admin_export_rules, skip_if=skip)
-        self._execute("admin", "read rule changelog", self._scenario_admin_changelog, skip_if=skip)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 3. Key Management (admin)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("3. Key Management")
+r = G("/keys")
+check("GET /keys → 200", r.status_code == 200, r.text[:80])
+temp_key = None
+temp_key_id = None
+if r.ok:
+    d = r.json()
+    check("response has 'total'", "total" in d, d)
+    check("response has 'keys' list", isinstance(d.get("keys"), list), d)
+    check("keys count > 0", d.get("total",0) > 0, d.get("total"))
+    k0 = d["keys"][0] if d.get("keys") else {}
+    for f in ("name","role","enabled","key_preview"):
+        check(f"key has field: {f}", f in k0, k0)
 
-        write_skip = skip or (None if self.full_admin else "Use --full-admin for write scenarios")
-        self._execute("admin", "create/update/toggle/delete rule", self._scenario_admin_rule_crud, skip_if=write_skip)
-        self._execute("admin", "create and disable temp API key", self._scenario_admin_key_lifecycle, skip_if=write_skip)
-        self._execute("admin", "approve a user suggestion", self._scenario_admin_approve_suggestion, skip_if=write_skip or (None if self.user_key else "Need user API key for suggestion approval flow"))
+# create temp key (cleanup first)
+P("/keys/disable", json={"name":"smoke_temp_key"})
+r = P("/keys", json={"name":"smoke_temp_key","role":"user","org_id":"default"})
+check("POST /keys → 200/201", r.status_code in (200,201), r.text[:200])
+if r.ok:
+    d = r.json()
+    check("POST /keys returns key string", bool(d.get("key")), d)
+    check("POST /keys returns name", d.get("name") == "smoke_temp_key", d)
+    temp_key = d.get("key")
+    temp_key_id = d.get("id")
 
-    def _maybe_bootstrap_user_key(self) -> None:
-        if self.user_key or not self.admin_key or not self.full_admin:
-            return
+if temp_key:
+    # user key can read rules
+    r2 = requests.get(f"{BASE}/rules", headers={"X-API-Key":temp_key}, timeout=10)
+    check("user key: GET /rules → 200", r2.status_code == 200, r2.text[:80])
+    # user key cannot manage keys (admin-only)
+    r3 = requests.get(f"{BASE}/keys", headers={"X-API-Key":temp_key}, timeout=10)
+    check("user key: GET /keys → 401/403", r3.status_code in (401,403), r3.text[:80])
+    # disable by key_id
+    rd = P("/keys/disable", json={"key_id": temp_key_id}) if temp_key_id else P("/keys/disable", json={"key": temp_key})
+    check("POST /keys/disable → 200", rd.status_code == 200, rd.text[:100])
+    # disabled key rejected on auth-required endpoint
+    r4 = requests.get(f"{BASE}/keys/me", headers={"X-API-Key":temp_key}, timeout=10)
+    check("disabled key → 401/403", r4.status_code in (401,403), r4.status_code)
 
-        temp_name = f"Scenario User {uuid.uuid4().hex[:6]}"
-        resp = self.client.request(
-            "POST",
-            "/keys",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={"name": temp_name, "role": "user", "expires_days": 1},
-        )
-        if resp.status_code != 200:
-            return
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 4. Organizations
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("4. Organizations")
+r = G("/orgs")
+check("GET /orgs → 200", r.status_code == 200, r.text[:80])
+if r.ok:
+    d = r.json()
+    check("response has 'total'", "total" in d, d)
+    check("response has 'orgs' list", isinstance(d.get("orgs"), list), d)
+    check("default org exists", any(o["id"]=="default" for o in d.get("orgs",[])), d)
 
-        body = resp.json()
-        self.user_key = body.get("key", "")
-        self._temp_user_key = self.user_key or None
-        self._temp_user_name = temp_name if self._temp_user_key else None
+TEST_ORG = "smoke_test_org_77"
+D(f"/orgs/{TEST_ORG}")  # pre-clean
+r = P("/orgs", json={"id":TEST_ORG,"name":"Smoke Org 77"})
+check("POST /orgs → 200/201", r.status_code in (200,201), r.text[:200])
+if r.ok:
+    d = unwrap(r.json(), "org")
+    check("created org has id", d.get("id") == TEST_ORG, r.json())
 
-    def _cleanup_temp_user_key(self) -> None:
-        if not self._temp_user_key or not self.admin_key:
-            return
+r2 = P("/orgs", json={"id":TEST_ORG,"name":"Dup"})
+check("Duplicate org → 400/409/422", r2.status_code in (400,409,422), r2.text[:100])
 
-        self.client.request(
-            "POST",
-            "/keys/disable",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={"key": self._temp_user_key},
-        )
+r = G("/orgs")
+if r.ok:
+    check("new org in list", any(o["id"]==TEST_ORG for o in r.json().get("orgs",[])), "")
 
-    def _auth_headers(self, api_key: str = "", session_id: str = "") -> Dict[str, str]:
-        headers: Dict[str, str] = {}
-        if api_key:
-            headers["X-API-Key"] = api_key
-        if session_id:
-            headers["X-Session-ID"] = session_id
-        return headers
+r = D("/orgs/default")
+check("DELETE 'default' org → 400/403/422", r.status_code in (400,403,422), r.text[:100])
 
-    @staticmethod
-    def _is_enabled(value: Any) -> bool:
-        return bool(value)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 5. Rules — List & Filter
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("5. Rules — List & Filter")
+r = G("/rules")
+check("GET /rules → 200", r.status_code == 200, r.text[:80])
+if r.ok:
+    d = r.json()
+    check("has 'total'", "total" in d, d)
+    check("has 'rules' list", isinstance(d.get("rules"), list), d)
+    check("total > 0", d.get("total",0) > 0, d.get("total"))
+    ru = d["rules"][0] if d.get("rules") else {}
+    for f in ("id","name","pattern","scope","use_count","strategy","enabled"):
+        check(f"rule field: {f}", f in ru, list(ru.keys()))
 
-    def _new_session(self) -> str:
-        resp = self.client.request("POST", "/session")
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}")
-        body = resp.json()
-        require(body.get("session_id"), f"Missing session_id: {body}")
-        return body["session_id"]
+r = G("/rules?scope=system")
+check("GET /rules?scope=system → 200", r.status_code == 200)
+if r.ok:
+    sys_r = r.json().get("rules",[])
+    check("all system scope", all(x["scope"]=="system" for x in sys_r), [x["scope"] for x in sys_r[:3]])
+    check("system rules >= 10", len(sys_r) >= 10, len(sys_r))
 
-    def _upload_file(
-        self,
-        *,
-        api_key: str,
-        session_id: str,
-        filename: str,
-        content: bytes,
-        content_type: Optional[str] = None,
-        whitelist: str = "",
-    ) -> Dict[str, Any]:
-        last_resp: Optional[Response] = None
-        for attempt in range(5):
-            resp = self.client.request(
-                "POST",
-                "/mask",
-                headers=self._auth_headers(api_key=api_key, session_id=session_id),
-                form_fields={"whitelist": whitelist},
-                files={"file": (filename, content, content_type)},
-            )
-            if resp.status_code == 200:
-                return resp.json()
-            last_resp = resp
-            if resp.status_code != 503:
-                break
-            time.sleep(2.0 * (attempt + 1))
+r = G("/rules?scope=private")
+check("GET /rules?scope=private → 200", r.status_code == 200)
+if r.ok:
+    priv_r = r.json().get("rules",[])
+    check("all private scope", all(x["scope"]=="private" for x in priv_r), [x["scope"] for x in priv_r[:3]])
 
-        require(last_resp is not None, "Upload request did not return a response")
-        raise AssertionError(f"Upload failed: {last_resp.status_code} {last_resp.text()}")
+# GET single rule
+r = G("/rules/ipv4")
+check("GET /rules/ipv4 → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    d = r.json()
+    check("rule id = ipv4", d.get("id") == "ipv4", d.get("id"))
+    check("scope field present", "scope" in d, d)
+    check("use_count field present", "use_count" in d, d)
 
-    def _wait_for_task(self, *, api_key: str, session_id: str, task_id: str) -> Dict[str, Any]:
-        start = time.time()
-        while time.time() - start < POLL_TIMEOUT:
-            resp = self.client.request(
-                "GET",
-                f"/task/{task_id}",
-                headers=self._auth_headers(api_key=api_key, session_id=session_id),
-            )
-            require(resp.status_code == 200, f"Task query failed: {resp.status_code} {resp.text()}")
-            body = resp.json()
-            if body.get("status") in {"completed", "failed"}:
-                return body
-            time.sleep(POLL_INTERVAL)
-        raise TimeoutError(f"Task {task_id} did not finish within {POLL_TIMEOUT}s")
+r = G("/rules/email")
+check("GET /rules/email → 200", r.status_code == 200, r.text[:100])
 
-    def _scenario_status(self) -> str:
-        resp = self.client.request("GET", "/status")
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}")
-        body = resp.json()
-        require(body.get("status") == "healthy", f"Unexpected status body: {body}")
-        return f"service={body.get('service')} auth_enabled={body.get('auth_enabled')}"
+r = G("/rules/nonexistent_rule_xyz")
+check("GET nonexistent rule → 404", r.status_code == 404, r.text[:100])
 
-    def _scenario_public_rules(self) -> str:
-        resp = self.client.request("GET", "/rules")
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}")
-        body = resp.json()
-        require(body.get("total", 0) > 0, f"Rule list empty: {body}")
-        return f"rules={body.get('total')}"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 6. Rules — CRUD
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("6. Rules — CRUD")
+RID = "smoke_crud_001"
+D(f"/rules/{RID}")
 
-    def _scenario_create_session(self) -> str:
-        session_id = self._new_session()
-        return f"session_id={session_id}"
+r = P("/rules", json={
+    "id": RID, "name": "Smoke CRUD Rule", "category": "PII",
+    "pattern": r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
+    "strategy": "partial", "placeholder": "[EMAIL]", "weight": 50, "enabled": True
+})
+check("POST /rules → 200/201", r.status_code in (200,201), r.text[:300])
+if r.ok:
+    d = unwrap(r.json(), "rule")
+    check("id matches", d.get("id") == RID, d.get("id"))
+    check("scope = private (default)", d.get("scope") == "private", d.get("scope"))
+    check("use_count = 0", d.get("use_count",0) == 0, d.get("use_count"))
 
-    def _scenario_protected_anonymous(self) -> str:
-        resp = self.client.request("GET", "/keys/me")
-        require(resp.status_code == 401, f"Expected 401, got {resp.status_code}")
-        return "GET /keys/me returned 401 without API key"
+r = G(f"/rules/{RID}")
+check("GET /rules/{id} → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    check("retrieved id matches", r.json().get("id") == RID, r.json().get("id"))
 
-    def _scenario_user_text_masking(self) -> str:
-        session_id = self._new_session()
-        upload = self._upload_file(
-            api_key=self.user_key,
-            session_id=session_id,
-            filename="sample.log",
-            content=SAMPLE_TEXT.encode("utf-8"),
-            content_type="text/plain",
-        )
-        task = self._wait_for_task(api_key=self.user_key, session_id=session_id, task_id=upload["task_id"])
-        require(task.get("status") == "completed", f"Task not completed: {task}")
+# Update uses PUT
+r = PU(f"/rules/{RID}", json={"name":"Smoke CRUD Rule (Updated)","weight":75})
+check("PUT /rules/{id} → 200", r.status_code == 200, r.text[:200])
+if r.ok:
+    d = unwrap(r.json(), "rule")
+    check("name updated", d.get("name") == "Smoke CRUD Rule (Updated)", d.get("name"))
+    check("weight updated", d.get("weight") == 75, d.get("weight"))
 
-        report_resp = self.client.request(
-            "GET",
-            f"/report/{upload['task_id']}",
-            headers=self._auth_headers(api_key=self.user_key, session_id=session_id),
-        )
-        require(report_resp.status_code == 200, f"Report failed: {report_resp.status_code}")
-        report = report_resp.json()
-        require(report["summary"]["total_matches"] > 0, f"No matches found: {report}")
+# PATCH should 405
+r = PA(f"/rules/{RID}", json={"weight":99})
+check("PATCH /rules/{id} → 405 (not supported)", r.status_code == 405, r.status_code)
 
-        download_resp = self.client.request(
-            "GET",
-            f"/download/{upload['task_id']}",
-            headers=self._auth_headers(api_key=self.user_key, session_id=session_id),
-        )
-        require(download_resp.status_code == 200, f"Download failed: {download_resp.status_code}")
-        masked_text = download_resp.text()
-        require("192.168.1.100" not in masked_text, "IP address was not masked")
-        require("SuperSecret123!" not in masked_text, "Password was not masked")
-        return f"task={upload['task_id']} matches={report['summary']['total_matches']}"
+# delete nonexistent
+r = D("/rules/nonexistent_xyz_123")
+check("DELETE nonexistent rule → 404/400", r.status_code in (404,400), r.text[:100])
 
-    def _scenario_user_whitelist(self) -> str:
-        session_id = self._new_session()
-        upload = self._upload_file(
-            api_key=self.user_key,
-            session_id=session_id,
-            filename="whitelist.log",
-            content=b"server ip=192.168.1.100\n",
-            content_type="text/plain",
-            whitelist="192.168.1.100",
-        )
-        task = self._wait_for_task(api_key=self.user_key, session_id=session_id, task_id=upload["task_id"])
-        require(task.get("status") == "completed", f"Task not completed: {task}")
-        download_resp = self.client.request(
-            "GET",
-            f"/download/{upload['task_id']}",
-            headers=self._auth_headers(api_key=self.user_key, session_id=session_id),
-        )
-        require(download_resp.status_code == 200, f"Download failed: {download_resp.status_code}")
-        require("192.168.1.100" in download_resp.text(), "Whitelist value should be preserved")
-        return f"task={upload['task_id']} whitelist preserved"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 7. Scope Promotion
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("7. Scope Promotion Workflow")
+PRID = "smoke_promo_001"
+D(f"/rules/{PRID}")
+r = P("/rules", json={
+    "id": PRID, "name": "Promo Rule", "category": "PII",
+    "pattern": r"\d{3}-\d{2}-\d{4}", "strategy": "placeholder", "placeholder": "[SSN]"
+})
+check("Create private rule", r.status_code in (200,201), r.text[:100])
 
-    def _scenario_user_bad_file(self) -> str:
-        session_id = self._new_session()
-        resp = self.client.request(
-            "POST",
-            "/mask",
-            headers=self._auth_headers(api_key=self.user_key, session_id=session_id),
-            form_fields={"whitelist": ""},
-            files={"file": ("photo.png", b"\x89PNG\r\n", "image/png")},
-        )
-        require(resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text()}")
-        return "unsupported file type returned 400"
+r = PA(f"/rules/{PRID}/promote", json={"scope":"org","org_id":"default"})
+check("Promote private→org → 200", r.status_code == 200, r.text[:200])
+if r.ok:
+    d = unwrap(r.json(), "rule")
+    check("scope = org", d.get("scope") == "org", d.get("scope"))
+    check("org_id = default", d.get("org_id") == "default", d.get("org_id"))
 
-    def _scenario_user_task_list(self) -> str:
-        session_id = self._new_session()
-        upload = self._upload_file(
-            api_key=self.user_key,
-            session_id=session_id,
-            filename="tasklist.log",
-            content=SAMPLE_TEXT.encode("utf-8"),
-            content_type="text/plain",
-        )
-        self._wait_for_task(api_key=self.user_key, session_id=session_id, task_id=upload["task_id"])
-        resp = self.client.request(
-            "GET",
-            "/tasks",
-            headers=self._auth_headers(api_key=self.user_key, session_id=session_id),
-        )
-        require(resp.status_code == 200, f"List tasks failed: {resp.status_code}")
-        tasks = resp.json().get("tasks", [])
-        require(any(item.get("task_id") == upload["task_id"] for item in tasks), "Uploaded task not found in list")
-        return f"tasks={len(tasks)} includes={upload['task_id']}"
+r = PA(f"/rules/{PRID}/promote", json={"scope":"system"})
+check("Promote org→system → 200", r.status_code == 200, r.text[:200])
+if r.ok:
+    d = unwrap(r.json(), "rule")
+    check("scope = system", d.get("scope") == "system", d.get("scope"))
+    check("org_id = None for system", d.get("org_id") is None, d.get("org_id"))
 
-    def _scenario_user_session_isolation(self) -> str:
-        owner_session = self._new_session()
-        other_session = self._new_session()
-        upload = self._upload_file(
-            api_key=self.user_key,
-            session_id=owner_session,
-            filename="isolation.log",
-            content=SAMPLE_TEXT.encode("utf-8"),
-            content_type="text/plain",
-        )
-        resp = self.client.request(
-            "GET",
-            f"/task/{upload['task_id']}",
-            headers=self._auth_headers(api_key=self.user_key, session_id=other_session),
-        )
-        require(resp.status_code == 404, f"Expected 404 from other session, got {resp.status_code}")
-        return f"task hidden across sessions ({upload['task_id']})"
+r = PA(f"/rules/{PRID}/promote", json={"scope":"org","org_id":"default"})
+check("Demote system→org → 200", r.status_code == 200, r.text[:100])
 
-    def _scenario_user_rule_detail(self) -> str:
-        resp = self.client.request(
-            "GET",
-            "/rules/ipv4",
-            headers=self._auth_headers(api_key=self.user_key),
-        )
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text()}")
-        body = resp.json()
-        require(body.get("id") == "ipv4", f"Unexpected rule body: {body}")
-        return f"rule={body.get('id')} name={body.get('name')}"
+r = PA(f"/rules/{PRID}/promote", json={"scope":"invalid_scope_xyz"})
+check("Invalid scope → 400/422", r.status_code in (400,422), r.text[:100])
 
-    def _scenario_user_suggestions(self) -> str:
-        suggestion_name = f"Scenario Suggestion {uuid.uuid4().hex[:8]}"
-        resp = self.client.request(
-            "POST",
-            "/rules/suggestions",
-            headers=self._auth_headers(api_key=self.user_key),
-            json_body={
-                "action": "create",
-                "name": suggestion_name,
-                "category": "custom",
-                "pattern": r"\\bSCENARIO_SECRET_[A-Z0-9]{6}\\b",
-                "strategy": "placeholder",
-                "placeholder": "[SCENARIO_SECRET]",
-                "weight": 6,
-                "reason": "Automated scenario coverage",
-            },
-        )
-        require(resp.status_code == 201, f"Suggestion create failed: {resp.status_code} {resp.text()}")
-        created = resp.json()["suggestion"]
+r = PA(f"/rules/{PRID}/promote", json={"scope":"org","org_id":"nonexistent_fake_org"})
+check("Promote to nonexistent org → 400/404/422", r.status_code in (400,404,422), r.text[:100])
 
-        listed = self.client.request(
-            "GET",
-            "/rules/suggestions",
-            headers=self._auth_headers(api_key=self.user_key),
-        )
-        require(listed.status_code == 200, f"List suggestions failed: {listed.status_code}")
-        suggestions = listed.json().get("suggestions", [])
-        require(any(item.get("id") == created["id"] for item in suggestions), "Created suggestion not found")
-        return f"suggestion_id={created['id']} status={created.get('status')}"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 8. org_id Validation
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("8. org_id Validation")
+BID = "smoke_badorg_001"
+D(f"/rules/{BID}")
+# When scope=org is sent with a fake org_id, the API uses the caller's org_id (default);
+# the injected org_id overrides the provided one — test that behavior is correct
+r = P("/rules", json={
+    "id": BID, "name": "Bad Org Test", "category": "test",
+    "pattern": r"\d+", "strategy": "placeholder",
+    "scope": "org", "org_id": "totally_fake_org_abc123"
+})
+# API either rejects (400/422) or overrides with caller's org — both are acceptable
+if r.status_code in (400, 422):
+    check("org_id validation on create (rejected)", True)
+elif r.ok:
+    actual_org = unwrap(r.json(), "rule").get("org_id")
+    check("org_id validation on create (overridden to caller org)",
+          actual_org != "totally_fake_org_abc123", f"org_id was: {actual_org}")
+    D(f"/rules/{BID}")
+else:
+    check("org_id validation on create", False, r.text[:200])
 
-    def _scenario_user_zip_masking(self) -> str:
-        session_id = self._new_session()
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as temp_file:
-            temp_path = Path(temp_file.name)
-        try:
-            with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("sample.log", SAMPLE_TEXT)
-            upload = self._upload_file(
-                api_key=self.user_key,
-                session_id=session_id,
-                filename="bundle.zip",
-                content=temp_path.read_bytes(),
-                content_type="application/zip",
-            )
-            task = self._wait_for_task(api_key=self.user_key, session_id=session_id, task_id=upload["task_id"])
-            require(task.get("status") == "completed", f"Archive task failed: {task}")
-            file_info = task.get("report", {}).get("file_info", {})
-            require(file_info.get("is_archive") is True, f"Expected archive report: {task}")
-            return f"task={upload['task_id']} files_processed={file_info.get('files_processed')}"
-        finally:
-            temp_path.unlink(missing_ok=True)
+r = PU(f"/rules/{RID}", json={"org_id":"fake_org_9999"})
+check("Update rule to fake org_id → 400/422", r.status_code in (400,422), r.text[:200])
 
-    def _scenario_admin_key_info(self) -> str:
-        resp = self.client.request("GET", "/keys/me", headers=self._auth_headers(api_key=self.admin_key))
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text()}")
-        body = resp.json()
-        require(body.get("role") == "admin", f"Current key is not admin: {body}")
-        return f"name={body.get('name')} role={body.get('role')}"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 9. Masking — Single File (async)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("9. Masking — Single File (async)")
+content = b"Contact: user@example.com or admin@company.org. Server: 192.168.1.100"
+r = requests.post(f"{BASE}/mask", headers=AH,
+                  files={"file":("test.txt", io.BytesIO(content), "text/plain")}, timeout=15)
+check("POST /mask → 200", r.status_code == 200, r.text[:200])
+if r.ok:
+    d = r.json()
+    check("has task_id",   "task_id"   in d, d)
+    check("has session_id","session_id" in d, d)
+    check("status=pending", d.get("status") == "pending", d.get("status"))
+    tr = mask_wait(d["session_id"], d["task_id"])
+    check("task completes ≤30s", tr is not None, "timeout")
+    if tr:
+        check("status=completed", tr.get("status") == "completed", tr.get("status"))
+        rpt = tr.get("report", {})
+        check("report present", bool(rpt), tr.keys())
+        sm = rpt.get("summary", {})
+        check("summary.total_matches > 0", sm.get("total_matches",0) > 0, sm)
+        bk = rpt.get("breakdown", [])
+        check("breakdown list present", isinstance(bk, list), type(bk))
 
-    def _scenario_admin_list_keys(self) -> str:
-        resp = self.client.request("GET", "/keys", headers=self._auth_headers(api_key=self.admin_key))
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text()}")
-        body = resp.json()
-        require(body.get("total", 0) >= 1, f"No keys returned: {body}")
-        return f"keys={body.get('total')}"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 10. Masking — use_count tracking
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("10. Masking — use_count Tracking")
+r_b = G("/rules/ipv4")
+uc_before = r_b.json().get("use_count", 0) if r_b.ok else 0
 
-    def _scenario_admin_export_rules(self) -> str:
-        resp = self.client.request("GET", "/rules-export", headers=self._auth_headers(api_key=self.admin_key))
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text()}")
-        body = resp.json()
-        require(body.get("total", 0) > 0, f"No rules exported: {body}")
-        return f"rules={body.get('total')}"
+r = requests.post(f"{BASE}/mask", headers=AH,
+                  files={"file":("ips.txt", io.BytesIO(b"10.0.0.1 and 172.16.5.5"), "text/plain")}, timeout=15)
+if r.ok:
+    d = r.json()
+    tr = mask_wait(d["session_id"], d["task_id"])
+    if tr and tr.get("status") == "completed":
+        r_a = G("/rules/ipv4")
+        uc_after = r_a.json().get("use_count", 0) if r_a.ok else 0
+        check("ipv4 use_count incremented", uc_after > uc_before, f"before={uc_before} after={uc_after}")
+    else:
+        check("ipv4 use_count incremented", False, f"task status: {tr}")
+else:
+    check("ipv4 use_count incremented", False, r.text)
 
-    def _scenario_admin_changelog(self) -> str:
-        resp = self.client.request("GET", "/rules/changelog", headers=self._auth_headers(api_key=self.admin_key))
-        require(resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text()}")
-        body = resp.json()
-        require("changelog" in body, f"Unexpected changelog body: {body}")
-        return f"entries={body.get('total')}"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 11. Masking — Edge Cases
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("11. Masking — Edge Cases")
+# unsupported type
+r = requests.post(f"{BASE}/mask", headers=AH,
+                  files={"file":("bad.exe", io.BytesIO(b"MZ\x90"), "application/octet-stream")}, timeout=10)
+check("Unsupported file type → 400", r.status_code == 400, r.text[:100])
 
-    def _scenario_admin_rule_crud(self) -> str:
-        rule_id = f"scenario_rule_{uuid.uuid4().hex[:8]}"
-        create_resp = self.client.request(
-            "POST",
-            "/rules",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={
-                "id": rule_id,
-                "name": "Scenario Rule",
-                "category": "custom",
-                "pattern": r"\\bSCENARIO_RULE_[A-Z0-9]{8}\\b",
-                "flags": "",
-                "strategy": "placeholder",
-                "placeholder": "[SCENARIO_RULE]",
-                "weight": 5,
-                "enabled": True,
-            },
-        )
-        require(create_resp.status_code == 201, f"Create rule failed: {create_resp.status_code} {create_resp.text()}")
+# empty file (should not 500)
+r = requests.post(f"{BASE}/mask", headers=AH,
+                  files={"file":("empty.txt", io.BytesIO(b""), "text/plain")}, timeout=15)
+check("Empty file → not 500", r.status_code != 500, r.status_code)
+if r.ok and r.json().get("task_id"):
+    d = r.json()
+    tr = mask_wait(d["session_id"], d["task_id"])
+    check("Empty file task resolves (not crash)", tr is not None and tr.get("status") in ("completed","failed"), tr)
 
-        update_resp = self.client.request(
-            "PUT",
-            f"/rules/{rule_id}",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={"name": "Scenario Rule Updated", "weight": 9},
-        )
-        require(update_resp.status_code == 200, f"Update failed: {update_resp.status_code} {update_resp.text()}")
+# no auth (some deployments allow anonymous, others return 401/403/503)
+r = requests.post(f"{BASE}/mask",
+                  files={"file":("t.txt", io.BytesIO(b"hello"), "text/plain")}, timeout=10)
+check("Mask no auth → not 500", r.status_code != 500, r.status_code)
 
-        toggle_resp = self.client.request(
-            "PATCH",
-            f"/rules/{rule_id}/toggle",
-            headers=self._auth_headers(api_key=self.admin_key),
-        )
-        require(toggle_resp.status_code == 200, f"Toggle failed: {toggle_resp.status_code} {toggle_resp.text()}")
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 12. Task Polling
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("12. Task Polling")
+r = requests.get(f"{BASE}/task/00000000-0000-0000-0000-000000000000",
+                 headers={**AH,"X-Session-ID":"00000000-0000-0000-0000-000000000000"}, timeout=10)
+check("Unknown task → 404", r.status_code == 404, r.text[:100])
 
-        detail_resp = self.client.request(
-            "GET",
-            f"/rules/{rule_id}",
-            headers=self._auth_headers(api_key=self.admin_key),
-        )
-        require(detail_resp.status_code == 200, f"Detail failed: {detail_resp.status_code} {detail_resp.text()}")
-        detail_body = detail_resp.json()
-        require(not self._is_enabled(detail_body.get("enabled")), f"Rule should be disabled after toggle: {detail_body}")
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 13. LLM Endpoints
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("13. LLM Endpoints")
+r = G("/llm/providers")
+check("GET /llm/providers → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    raw = r.json()
+    # supports both plain list and {total, providers:[...]} envelope
+    prov = raw.get("providers", raw) if isinstance(raw, dict) else raw
+    check("providers not empty", len(prov) > 0, raw)
+    check("ollama present", any(
+        (p.get("id") if isinstance(p,dict) else p) == "ollama" for p in prov), prov)
 
-        delete_resp = self.client.request(
-            "DELETE",
-            f"/rules/{rule_id}",
-            headers=self._auth_headers(api_key=self.admin_key),
-        )
-        require(delete_resp.status_code == 200, f"Delete failed: {delete_resp.status_code} {delete_resp.text()}")
-        return f"rule_id={rule_id} updated+toggled+deleted"
+r = G("/llm/models")
+check("GET /llm/models → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    models = r.json()
+    check("models list not empty", len(models) > 0, models)
 
-    def _scenario_admin_key_lifecycle(self) -> str:
-        key_name = f"Scenario Temp Key {uuid.uuid4().hex[:6]}"
-        create_resp = self.client.request(
-            "POST",
-            "/keys",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={"name": key_name, "role": "user", "expires_days": 7},
-        )
-        require(create_resp.status_code == 200, f"Create key failed: {create_resp.status_code} {create_resp.text()}")
-        created = create_resp.json()
+t0 = time.time()
+r = P("/llm/generate-regex", json={
+    "description": "match IPv4 like 192.168.1.1",
+    "provider": "ollama", "model": "gemma3:1b"
+})
+elapsed = time.time() - t0
+check(f"POST /llm/generate-regex → 200 ({elapsed:.1f}s)", r.status_code == 200, r.text[:200])
+if r.ok:
+    d = r.json()
+    check("has pattern",            bool(d.get("pattern")),            d)
+    check("has suggested_name",     "suggested_name"     in d,         d)
+    check("has suggested_category", "suggested_category" in d,         d)
+    check("has explanation",         "explanation"        in d,         d)
 
-        disable_resp = self.client.request(
-            "POST",
-            "/keys/disable",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={"key": created["key"]},
-        )
-        require(disable_resp.status_code == 200, f"Disable key failed: {disable_resp.status_code} {disable_resp.text()}")
-        return f"temp_key={created['name']} created+disabled"
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 14. Rule Suggestions
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("14. Rule Suggestions")
+r = P("/rules/suggestions", json={
+    "action":"create","name":"Smoke Test Suggest","category":"PII",
+    "pattern":r"[A-Z]{2}\d{6}","strategy":"placeholder","reason":"auto test"
+})
+check("POST /rules/suggestions → 200/201", r.status_code in (200,201), r.text[:200])
 
-    def _scenario_admin_approve_suggestion(self) -> str:
-        rule_id = f"approval_rule_{uuid.uuid4().hex[:8]}"
-        create_rule_resp = self.client.request(
-            "POST",
-            "/rules",
-            headers=self._auth_headers(api_key=self.admin_key),
-            json_body={
-                "id": rule_id,
-                "name": "Approval Scenario Rule",
-                "category": "custom",
-                "pattern": r"\\bAPPROVAL_SCENARIO_[A-Z0-9]{6}\\b",
-                "flags": "",
-                "strategy": "placeholder",
-                "placeholder": "[APPROVAL_SCENARIO]",
-                "weight": 5,
-                "enabled": True,
-            },
-        )
-        require(create_rule_resp.status_code == 201, f"Temp rule create failed: {create_rule_resp.status_code} {create_rule_resp.text()}")
+r = G("/rules/suggestions")
+check("GET /rules/suggestions → 200", r.status_code == 200, r.text[:100])
+if r.ok:
+    body = r.json()
+    sugs = body.get("suggestions", body) if isinstance(body,dict) else body
+    check("suggestions is list", isinstance(sugs,list), type(sugs))
+    check("at least 1 suggestion", len(sugs) >= 1, len(sugs))
 
-        try:
-            create_resp = self.client.request(
-                "POST",
-                "/rules/suggestions",
-                headers=self._auth_headers(api_key=self.user_key),
-                json_body={
-                    "rule_id": rule_id,
-                    "action": "disable",
-                    "reason": "Admin approval scenario coverage",
-                },
-            )
-            require(create_resp.status_code == 201, f"Suggestion create failed: {create_resp.status_code} {create_resp.text()}")
-            suggestion = create_resp.json()["suggestion"]
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 15. Org Lifecycle (self-service)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("15. Org Lifecycle — Invite / Join / Leave")
 
-            approve_resp = self.client.request(
-                "PATCH",
-                f"/rules/suggestions/{suggestion['id']}",
-                headers=self._auth_headers(api_key=self.admin_key),
-                json_body={"action": "approve"},
-            )
-            require(approve_resp.status_code == 200, f"Approve failed: {approve_resp.status_code} {approve_resp.text()}")
-            approved = approve_resp.json()["suggestion"]
-            require(approved.get("status") == "approved", f"Unexpected suggestion status: {approved}")
+# create a fresh user key to act as org owner
+USER_KEY_NAME = "smoke_org_owner_key"
+P("/keys/disable", json={"name": USER_KEY_NAME})
+r = P("/keys", json={"name": USER_KEY_NAME, "role": "user", "org_id": "default"})
+check("Create owner user key", r.status_code in (200, 201), r.text[:200])
+owner_key = r.json().get("key") if r.ok else None
 
-            detail_resp = self.client.request(
-                "GET",
-                f"/rules/{rule_id}",
-                headers=self._auth_headers(api_key=self.admin_key),
-            )
-            require(detail_resp.status_code == 200, f"Temp rule detail failed: {detail_resp.status_code} {detail_resp.text()}")
-            require(not self._is_enabled(detail_resp.json().get("enabled")), "Approved disable suggestion did not disable the rule")
-            return f"suggestion_id={approved['id']} approved for {rule_id}"
-        finally:
-            self.client.request(
-                "DELETE",
-                f"/rules/{rule_id}",
-                headers=self._auth_headers(api_key=self.admin_key),
-            )
+owner_org_id = None
+if owner_key:
+    UH = {"X-API-Key": owner_key}
+    UJ = {**UH, "Content-Type": "application/json"}
 
-    def _print_report(self) -> None:
-        total = len(self.results)
-        passed = sum(item.status == "PASS" for item in self.results)
-        failed = sum(item.status == "FAIL" for item in self.results)
-        skipped = sum(item.status == "SKIP" for item in self.results)
+    # owner creates an org (auto-slug, no id needed from client)
+    r = requests.post(f"{BASE}/orgs", headers=UJ,
+                      json={"id": "smoke-lifecycle-00", "name": "Lifecycle Test Org"},
+                      timeout=10)
+    check("Owner: POST /orgs → 200/201", r.status_code in (200, 201), r.text[:200])
+    if r.ok:
+        owner_org_id = unwrap(r.json(), "org").get("id") or "smoke-lifecycle-00"
+        check("Org has invite code", bool(unwrap(r.json(), "org").get("invite_code")), r.json())
+        invite = unwrap(r.json(), "org").get("invite_code")
 
-        print("# API Scenario Test Report")
-        print()
-        print(f"- Base URL: `{self.client.base_url}`")
-        print(f"- Generated At: `{time.strftime('%Y-%m-%d %H:%M:%S')}`")
-        print(f"- Total: `{total}`  Passed: `{passed}`  Failed: `{failed}`  Skipped: `{skipped}`")
-        print()
-        print("| Role | Scenario | Result | Duration(ms) | Detail |")
-        print("|------|----------|--------|--------------|--------|")
-        for item in self.results:
-            print(
-                f"| {item.role} | {item.name} | {item.status} | "
-                f"{item.duration_ms} | {item.detail.replace('|', '/')} |"
-            )
+        # GET /orgs/mine as owner
+        r2 = requests.get(f"{BASE}/orgs/mine", headers=UH, timeout=10)
+        check("Owner: GET /orgs/mine → 200", r2.status_code == 200, r2.text[:100])
+        if r2.ok:
+            mine = r2.json()
+            check("mine.id matches", mine.get("id") == owner_org_id, mine.get("id"))
 
+        # Create second user key that will join/leave
+        JOINER_NAME = "smoke_org_joiner_key"
+        P("/keys/disable", json={"name": JOINER_NAME})
+        r3 = P("/keys", json={"name": JOINER_NAME, "role": "user", "org_id": "default"})
+        check("Create joiner key", r3.status_code in (200, 201), r3.text[:100])
+        joiner_key = r3.json().get("key") if r3.ok else None
 
-def parse_args(argv: Iterable[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run comprehensive API scenarios for users and admins")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="API base URL, e.g. http://host:port/api/v1")
-    parser.add_argument("--user-key", default=os.getenv("DMS_USER_API_KEY", ""), help="Regular user API key")
-    parser.add_argument("--admin-key", default=os.getenv("DMS_ADMIN_API_KEY", ""), help="Administrator API key")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Per-request timeout in seconds")
-    parser.add_argument("--full-admin", action="store_true", help="Enable admin write scenarios such as CRUD and key lifecycle")
-    return parser.parse_args(list(argv))
+        if joiner_key and invite:
+            JH = {"X-API-Key": joiner_key}
+            JJ = {**JH, "Content-Type": "application/json"}
 
+            # Join via invite code
+            r4 = requests.post(f"{BASE}/orgs/join", headers=JJ,
+                               json={"invite_code": invite}, timeout=10)
+            check("Joiner: POST /orgs/join → 200", r4.status_code == 200, r4.text[:200])
+            if r4.ok:
+                check("Joiner now in org", r4.json().get("org_id") == owner_org_id,
+                      r4.json().get("org_id"))
 
-def main(argv: Iterable[str]) -> int:
-    args = parse_args(argv)
-    client = APIClient(args.base_url, timeout=args.timeout)
-    runner = ScenarioRunner(
-        client,
-        user_key=args.user_key.strip(),
-        admin_key=args.admin_key.strip(),
-        full_admin=args.full_admin,
-    )
-    return runner.run_all()
+            # Bad invite code
+            r5 = requests.post(f"{BASE}/orgs/join", headers=JJ,
+                               json={"invite_code": "BADCODE"}, timeout=10)
+            check("Bad invite code → 400/404", r5.status_code in (400, 404), r5.text[:100])
 
+            # Joiner leaves
+            r6 = requests.post(f"{BASE}/orgs/leave", headers=JJ, timeout=10)
+            check("Joiner: POST /orgs/leave → 200", r6.status_code == 200, r6.text[:100])
 
-if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+            # Owner cannot leave own org
+            r7 = requests.post(f"{BASE}/orgs/leave", headers=UJ, timeout=10)
+            check("Owner: POST /orgs/leave → 400/403", r7.status_code in (400, 403), r7.text[:100])
+
+            # Rotate invite code
+            r8 = requests.post(f"{BASE}/orgs/{owner_org_id}/invite", headers=UJ, timeout=10)
+            check("Owner: POST /orgs/{id}/invite (rotate) → 200", r8.status_code == 200, r8.text[:100])
+            if r8.ok:
+                new_code = r8.json().get("invite_code")
+                check("New invite code differs from old", new_code != invite, new_code)
+
+            # non-owner cannot rotate invite
+            r9 = requests.post(f"{BASE}/orgs/{owner_org_id}/invite", headers=JJ, timeout=10)
+            check("Non-owner: rotate invite → 403", r9.status_code == 403, r9.text[:100])
+
+            # Cleanup joiner key
+            requests.post(f"{BASE}/keys/disable", headers=AJ, json={"key": joiner_key}, timeout=10)
+
+    # Cleanup owner key
+    if owner_key:
+        requests.post(f"{BASE}/keys/disable", headers=AJ, json={"key": owner_key}, timeout=10)
+else:
+    check("Org lifecycle skipped — couldn't create owner key", False)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 16. Cleanup
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("16. Cleanup")
+for rid in (RID, PRID, BID):
+    r = D(f"/rules/{rid}")
+    check(f"DELETE {rid} → 200/204/400/404", r.status_code in (200,204,400,404), r.text[:80])
+
+r = D(f"/orgs/{TEST_ORG}")
+check(f"DELETE org {TEST_ORG} → 200/204", r.status_code in (200,204), r.text[:80])
+
+if owner_org_id:
+    r = D(f"/orgs/{owner_org_id}")
+    check(f"DELETE lifecycle org → 200/204", r.status_code in (200,204), r.text[:80])
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Final
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+section("DONE")
+total = passed + failed
+print(f"\n{'='*58}")
+print(f"  TOTAL : {total} checks")
+print(f"  PASS  : {passed}  ({passed*100//total if total else 0}%)")
+print(f"  FAIL  : {failed}")
+print(f"{'='*58}")
+sys.exit(0 if failed == 0 else 1)

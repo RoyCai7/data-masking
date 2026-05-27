@@ -24,7 +24,7 @@ router = APIRouter()
 # ─── Request / Response Models ─────────────────────────────────────────────────
 
 class RuleCreate(BaseModel):
-    id: str = Field(..., min_length=1, max_length=64, description="Unique rule identifier, e.g. 'ipv4_cidr'")
+    id: Optional[str] = Field(default=None, max_length=64, description="Rule ID (auto-UUID for org/private rules)")
     name: str = Field(..., min_length=1, max_length=128)
     category: str = Field(default="custom", max_length=32)
     pattern: str = Field(..., min_length=1, description="Regex pattern string")
@@ -33,6 +33,7 @@ class RuleCreate(BaseModel):
     placeholder: str = Field(default="[MASKED]")
     weight: int = Field(default=5, ge=0, le=100)
     enabled: bool = True
+    scope: str = Field(default="private", description="'private' (owner only), 'org' (org members), 'system' (admin only)")
 
 
 class RuleUpdate(BaseModel):
@@ -44,6 +45,17 @@ class RuleUpdate(BaseModel):
     placeholder: Optional[str] = None
     weight: Optional[int] = Field(default=None, ge=0, le=100)
     enabled: Optional[bool] = None
+    scope: Optional[str] = Field(default=None, description="'private', 'org', or 'system' (admin only)")
+
+
+class PromoteRequest(BaseModel):
+    scope: str = Field(..., description="Target scope: 'org' or 'system'")
+    org_id: Optional[str] = Field(default=None, description="Target org ID (required when scope='org')")
+
+
+class OrgCreate(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64, description="Unique org identifier")
+    name: str = Field(..., min_length=1, max_length=128)
 
 
 class SuggestionCreate(BaseModel):
@@ -75,30 +87,98 @@ def _require_admin(request: Request):
         raise HTTPException(status_code=403, detail="Admin role required")
 
 
-def _get_user_name(request: Request) -> str:
-    """Extract user name from request (for audit logging)."""
+def _get_auth_context(request: Request) -> dict:
+    """Returns dict with role, name, org_id, key_prefix from request auth state."""
+    from app.core.auth import AUTH_ENABLED
     auth_user = getattr(request.state, "auth_user", None)
+    if not AUTH_ENABLED:
+        return {"role": "admin", "name": "dev", "org_id": "default", "key_prefix": "dev_____"}
     if auth_user:
-        return auth_user.get("name", "unknown")
-    return "anonymous"
+        return {
+            "role": auth_user.get("role", "user"),
+            "name": auth_user.get("name", "unknown"),
+            "org_id": auth_user.get("org_id") or "default",
+            "key_prefix": auth_user.get("key_prefix", ""),
+        }
+    return {"role": "anonymous", "name": "anonymous", "org_id": None, "key_prefix": ""}
 
 
-# ─── Public: List Rules ───────────────────────────────────────────────────────
+def _is_org_owner_check(org_id: str, key_prefix: str) -> bool:
+    """Return True if key_prefix is an owner of the given org."""
+    from app.engine.repository import is_org_owner
+    return is_org_owner(org_id, key_prefix)
+
+
+def _require_rule_write_access(request: Request, rule: dict):
+    """
+    Enforce write access for self-service model:
+      system rule  → admin only
+      org rule     → org owner of that org, or admin
+      private rule → creator (by creator_key_prefix), or admin
+    Raises HTTPException(403) on failure.
+    """
+    from app.core.auth import AUTH_ENABLED
+    if not AUTH_ENABLED:
+        return
+    ctx = _get_auth_context(request)
+    if ctx["role"] == "admin":
+        return  # admin can do anything
+
+    scope = rule.get("scope", "private")
+    if scope == "system":
+        raise HTTPException(status_code=403, detail="Only admins can modify system rules")
+
+    if scope == "org":
+        org_id = rule.get("org_id")
+        if not org_id or not _is_org_owner_check(org_id, ctx["key_prefix"]):
+            raise HTTPException(status_code=403,
+                                detail="Only an org owner can modify org-scoped rules")
+        return
+
+    # private rule — only the creator may modify it
+    if scope == "private":
+        creator_prefix = rule.get("creator_key_prefix")
+        if not creator_prefix or ctx["key_prefix"] != creator_prefix:
+            raise HTTPException(status_code=403,
+                                detail="Only the rule creator can modify their private rules")
+        return
+
+    raise HTTPException(status_code=403, detail="Cannot determine rule ownership")
+
+
+def _get_user_name(request: Request) -> str:
+    return _get_auth_context(request)["name"]
+
+
+# ─── Public: List Rules ────────────────────────────────────────────────
 
 @router.get("/rules", summary="List all rules")
 async def list_rules(
+    request: Request,
     category: Optional[str] = Query(default=None, description="Filter by category"),
     enabled_only: bool = Query(default=False, description="Only return enabled rules"),
+    scope: Optional[str] = Query(default=None, description="Filter by scope: system | org | private"),
 ):
     """
-    List masking rules. Public endpoint — no authentication required.
-    Returns full metadata for each rule.
+    List masking rules with scope-aware filtering.
+
+    - Admin: sees all rules
+    - Authenticated user: sees system rules + own org rules + own private rules
+    - Anonymous: sees only system rules
     """
-    rules = rule_service.list_rules_detailed(category=category, enabled_only=enabled_only)
-    return {
-        "total": len(rules),
-        "rules": rules,
-    }
+    ctx = _get_auth_context(request)
+    rules = rule_service.list_rules_detailed(
+        category=category,
+        enabled_only=enabled_only,
+        owner=ctx["name"] if ctx["role"] != "admin" else None,
+        org_id=ctx["org_id"] if ctx["role"] != "admin" else None,
+        role=ctx["role"],
+    )
+
+    if scope:
+        rules = [r for r in rules if r.get("scope") == scope]
+
+    return {"total": len(rules), "rules": rules}
 
 
 # ─── User: Suggestions ───────────────────────────────────────────────────────
@@ -187,10 +267,38 @@ async def get_rule(rule_id: str):
 
 @router.post("/rules", summary="Create a new rule", status_code=201)
 async def create_rule(body: RuleCreate, request: Request):
-    """Create a new masking rule. Requires admin role."""
-    _require_admin(request)
+    """
+    Create a new masking rule.
+    - Admin: can create rules at any scope (private / org / system).
+    - Authenticated user: can only create private rules within their own org.
+    """
+    from app.core.auth import AUTH_ENABLED
+    ctx = _get_auth_context(request)
+    is_admin = ctx["role"] == "admin"
+
+    if AUTH_ENABLED and not is_admin:
+        # Non-admin users are restricted to creating private rules in their own org
+        auth_user = getattr(request.state, "auth_user", None)
+        if not auth_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+
+    data = body.model_dump()
+
+    if not is_admin:
+        # Force private scope and caller's org — user cannot choose scope or org
+        data["scope"] = "private"
+        data["org_id"] = ctx["org_id"]
+    else:
+        # Admin: inject caller's org as default if scope != system
+        if data.get("scope") != "system":
+            data.setdefault("org_id", ctx["org_id"])
+
+    # Track creator for private rules
+    if data.get("scope") == "private":
+        data["creator_key_prefix"] = ctx["key_prefix"]
+
     try:
-        rule = rule_service.create_rule(body.model_dump(), created_by=_get_user_name(request))
+        rule = rule_service.create_rule(data, created_by=ctx["name"])
         return {"message": "Rule created", "rule": rule}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -198,14 +306,30 @@ async def create_rule(body: RuleCreate, request: Request):
 
 @router.put("/rules/{rule_id}", summary="Update a rule")
 async def update_rule(rule_id: str, body: RuleUpdate, request: Request):
-    """Update an existing rule. Requires admin role."""
-    _require_admin(request)
+    """
+    Update an existing rule.
+    - Admin: can update any rule.
+    - Org owner: can update org-scoped rules belonging to their org.
+    - User: can only update their own private rules (by creator_key_prefix).
+    """
+    existing = rule_service.get_rule_detail(rule_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+    _require_rule_write_access(request, existing)
+
     # Only send non-None fields
     data = {k: v for k, v in body.model_dump().items() if v is not None}
     if not data:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    ctx = _get_auth_context(request)
+    # Non-admin cannot change scope / org_id via update
+    if ctx["role"] != "admin":
+        data.pop("scope", None)
+        data.pop("org_id", None)
+
     try:
-        rule = rule_service.update_rule(rule_id, data, changed_by=_get_user_name(request))
+        rule = rule_service.update_rule(rule_id, data, changed_by=ctx["name"])
         return {"message": "Rule updated", "rule": rule}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -215,9 +339,14 @@ async def update_rule(rule_id: str, body: RuleUpdate, request: Request):
 async def delete_rule(rule_id: str, request: Request):
     """
     Delete a custom rule. Built-in rules cannot be deleted (use toggle).
-    Requires admin role.
+    - Admin: can delete any rule.
+    - Org owner: can delete org-scoped rules in their org.
+    - User: can only delete their own private rules.
     """
-    _require_admin(request)
+    existing = rule_service.get_rule_detail(rule_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+    _require_rule_write_access(request, existing)
     try:
         rule_service.delete_rule(rule_id, changed_by=_get_user_name(request))
         return {"message": f"Rule '{rule_id}' deleted"}
@@ -233,6 +362,56 @@ async def toggle_rule(rule_id: str, request: Request):
         rule = rule_service.toggle_rule(rule_id, changed_by=_get_user_name(request))
         status_text = "enabled" if rule["enabled"] else "disabled"
         return {"message": f"Rule '{rule_id}' {status_text}", "rule": rule}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/rules/{rule_id}/promote", summary="Change rule scope (promote/demote)")
+async def promote_rule(rule_id: str, body: PromoteRequest, request: Request):
+    """
+    Change rule scope — self-service model:
+    - private → org : org owner (of the org the rule belongs to) or admin.
+                      Ownership transfers to org (Plan B); original creator loses edit rights.
+    - org → system  : admin only.
+    - any → private : demote — admin, or org owner reverting their own org rule.
+    """
+    from app.core.auth import AUTH_ENABLED
+    ctx = _get_auth_context(request)
+    is_admin = ctx["role"] == "admin"
+
+    existing = rule_service.get_rule_detail(rule_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+
+    current_scope = existing.get("scope", "private")
+    target_scope  = body.scope
+
+    if AUTH_ENABLED and not is_admin:
+        if target_scope == "system":
+            raise HTTPException(status_code=403,
+                                detail="Only admins can promote rules to system scope")
+
+        # Determine the org the rule currently belongs to (or the target org for private→org)
+        relevant_org = body.org_id or existing.get("org_id") or ctx["org_id"]
+        if not _is_org_owner_check(relevant_org, ctx["key_prefix"]):
+            raise HTTPException(status_code=403,
+                                detail="Only an org owner can promote/demote rules within their org")
+
+        # Org owner may only act on rules that belong to their own org
+        if current_scope in ("org", "private") and existing.get("org_id") not in (relevant_org, None, ctx["org_id"]):
+            raise HTTPException(status_code=403,
+                                detail="Cannot promote rules belonging to a different org")
+
+    # Default target org to caller's org
+    target_org = body.org_id or (None if target_scope == "system" else
+                                  existing.get("org_id") or ctx["org_id"])
+    try:
+        rule = rule_service.set_scope(
+            rule_id, target_scope,
+            org_id=target_org,
+            changed_by=ctx["name"]
+        )
+        return {"message": f"Rule '{rule_id}' scope changed to {target_scope}", "rule": rule}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

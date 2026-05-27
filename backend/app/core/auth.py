@@ -1,21 +1,28 @@
 """
-API Key Authentication Module
-Provides middleware and utilities for API Key based authentication.
+auth.py — Authentication middleware + low-level key validation.
 
-Usage:
-  - Set AUTH_ENABLED=true (default) to enforce API Key auth
-  - Set AUTH_ENABLED=false for development mode (no auth)
-  - Public endpoints (/status, /rules, /docs) are always accessible
-  - Protected endpoints require X-API-Key header
+Responsibilities (intentionally narrow):
+  - Define AUTH_ENABLED flag and PUBLIC_PATHS
+  - _hash_key / generate_api_key  (cryptographic primitives only)
+  - validate_key                  (lookup + expiry check, no business logic)
+  - APIKeyMiddleware               (inject auth_user into request.state)
+
+Business operations (create/rotate/update/disable keys) live in:
+  → core/key_service.py
+
+Permission guards (require_admin, require_auth) live in:
+  → core/permissions.py
+
+Backward-compat re-exports for existing callers:
+  add_key, rotate_key, update_key, disable_key
+  (These will be removed in a future cleanup pass)
 """
-import json
+import hashlib
 import os
 import secrets
 import logging
-import tempfile
-from datetime import date, timedelta
-from pathlib import Path
-from typing import Optional, Dict, Any
+from datetime import date
+from typing import Optional, Any
 
 try:
     from fastapi import Request, HTTPException
@@ -41,15 +48,9 @@ except ModuleNotFoundError:
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-KEYS_FILE = Path(os.getenv("API_KEYS_FILE", str(Path(__file__).parent.parent.parent / "keys.json")))
+# ── Configuration ─────────────────────────────────────────────────────────────
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() == "true"
 
-# In-memory key cache
-_keys_cache: Optional[Dict[str, dict]] = None
-_keys_mtime: float = 0.0
-
-# Paths that don't require authentication (but optionally accept credentials)
 PUBLIC_PATHS = frozenset({
     "/api/v1/status",
     "/api/v1/rules",
@@ -60,136 +61,32 @@ PUBLIC_PATHS = frozenset({
     "/health",
 })
 
-# Path prefixes that don't require authentication
 PUBLIC_PREFIXES = (
     "/assets/",
 )
 
 
+# ── Cryptographic primitives ──────────────────────────────────────────────────
+
+def _hash_key(api_key: str) -> str:
+    """Return the SHA-256 hex digest of an API key."""
+    return hashlib.sha256(api_key.encode()).hexdigest()
+
+
 def generate_api_key() -> str:
-    """Generate a new API key with dms_ prefix"""
+    """Generate a new API key with dms_ prefix."""
     return f"dms_{secrets.token_hex(16)}"
 
 
-def _load_keys_file() -> dict:
-    """Load keys from JSON file"""
-    if not KEYS_FILE.exists():
-        return {"keys": []}
-    try:
-        with open(KEYS_FILE, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError) as e:
-        logger.error(f"Failed to load keys file {KEYS_FILE}: {e}")
-        return {"keys": []}
-
-
-def _save_keys_file(data: dict):
-    """Save keys to JSON file atomically (write-to-temp then rename)"""
-    global _keys_cache, _keys_mtime
-    try:
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(KEYS_FILE.parent), suffix=".tmp"
-        )
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(tmp_path, str(KEYS_FILE))
-        # Invalidate cache so next read picks up changes
-        _keys_cache = None
-        _keys_mtime = 0.0
-    except Exception as e:
-        logger.error(f"Failed to save keys file: {e}")
-        # Clean up temp file if rename failed
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-        raise
-
-
-def load_keys() -> Dict[str, dict]:
-    """Load all API keys as a dict keyed by the key string (cached)"""
-    global _keys_cache, _keys_mtime
-    try:
-        mtime = KEYS_FILE.stat().st_mtime if KEYS_FILE.exists() else 0.0
-    except OSError:
-        mtime = 0.0
-    if _keys_cache is not None and mtime == _keys_mtime:
-        return _keys_cache
-    data = _load_keys_file()
-    _keys_cache = {k["key"]: k for k in data.get("keys", [])}
-    _keys_mtime = mtime
-    return _keys_cache
-
-
-def add_key(name: str, role: str = "user", expires_days: int = 365) -> dict:
-    """Add a new API key and save to file"""
-    data = _load_keys_file()
-    new_key = {
-        "key": generate_api_key(),
-        "name": name,
-        "role": role,
-        "created_at": date.today().isoformat(),
-        "expires_at": (date.today() + timedelta(days=expires_days)).isoformat(),
-        "enabled": True,
-    }
-    data.setdefault("keys", []).append(new_key)
-    _save_keys_file(data)
-    logger.info(f"API key created for '{name}' (role={role})")
-    return new_key
-
-
-def disable_key(api_key: str) -> bool:
-    """Disable an API key"""
-    data = _load_keys_file()
-    for k in data.get("keys", []):
-        if k["key"] == api_key:
-            k["enabled"] = False
-            _save_keys_file(data)
-            logger.info(f"API key disabled for '{k.get('name')}'")
-            return True
-    return False
-
-
-def rotate_key(old_api_key: str) -> Optional[dict]:
-    """
-    Rotate an API key: disable the old one, create a new one with same name/role.
-    Returns the new key data, or None if old key not found.
-    """
-    data = _load_keys_file()
-    old_entry = None
-    for k in data.get("keys", []):
-        if k["key"] == old_api_key:
-            old_entry = k
-            break
-
-    if not old_entry:
-        return None
-
-    # Disable old key
-    old_entry["enabled"] = False
-
-    # Create new key inheriting name and role
-    new_key = {
-        "key": generate_api_key(),
-        "name": old_entry["name"],
-        "role": old_entry.get("role", "user"),
-        "created_at": date.today().isoformat(),
-        "expires_at": (date.today() + timedelta(days=365)).isoformat(),
-        "enabled": True,
-    }
-    data["keys"].append(new_key)
-    _save_keys_file(data)
-    logger.info(f"API key rotated for '{old_entry['name']}'")
-    return new_key
-
+# ── Validation (read-only DB lookup) ─────────────────────────────────────────
 
 def validate_key(api_key: str) -> dict:
     """
-    Validate an API key.
-    Returns the key data dict if valid, raises HTTPException otherwise.
+    Validate an API key by hashing and looking up in SQLite.
+    Returns the key record dict if valid, raises HTTPException otherwise.
     """
-    keys = load_keys()
-    key_data = keys.get(api_key)
+    from app.engine.repository import db_get_key_by_hash  # lazy import
+    key_data = db_get_key_by_hash(_hash_key(api_key))
 
     if not key_data:
         raise HTTPException(status_code=401, detail="Invalid API Key")
@@ -203,9 +100,10 @@ def validate_key(api_key: str) -> dict:
             if date.fromisoformat(expires_at) < date.today():
                 raise HTTPException(status_code=403, detail="API Key has expired")
         except ValueError:
-            # Malformed expiry date — reject the key for safety
             raise HTTPException(status_code=403, detail="API Key has invalid expiry date")
 
+    # Inject a stable key_prefix so callers can generate previews without plaintext
+    key_data.setdefault("key_prefix", api_key[:8])
     return key_data
 
 
@@ -274,3 +172,27 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             )
 
         return await call_next(request)
+
+
+# ── Backward-compatible re-exports ────────────────────────────────────────────
+# Callers that still import add_key / rotate_key / update_key from here will
+# continue to work.  Prefer importing from core.key_service directly.
+def add_key(name: str, role: str = "user", expires_days: int = 365,
+            org_id: str = "default") -> dict:
+    from app.core.key_service import add_key as _add_key
+    return _add_key(name=name, role=role, expires_days=expires_days, org_id=org_id)
+
+
+def rotate_key(old_api_key: str):
+    from app.core.key_service import rotate_key as _rotate_key
+    return _rotate_key(old_api_key)
+
+
+def update_key(api_key: str, org_id=None, role=None):
+    from app.core.key_service import update_key as _update_key
+    return _update_key(api_key, org_id=org_id, role=role)
+
+
+def disable_key(api_key: str) -> bool:
+    from app.core.key_service import disable_key as _disable_key
+    return _disable_key(api_key)

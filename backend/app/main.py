@@ -14,7 +14,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from app.api import mask, status, rules
+from app.api import mask, status, rules, llm, orgs, keys
 from app.core.executor import shutdown_executor
 from app.core.auth import APIKeyMiddleware, AUTH_ENABLED
 from app.core.session import cleanup_expired_sessions
@@ -70,6 +70,9 @@ async def lifespan(app: FastAPI):
     # Initialize rules DB + cache
     rule_service.initialize()
     logger.info("✅ Rules engine initialized (SQLite + in-memory cache)")
+    # Initialise shared HTTP client for LLM backends
+    await llm.startup()
+    logger.info("✅ LLM HTTP client initialised")
 
     # Start periodic session cleanup task
     async def _session_cleanup_loop():
@@ -87,6 +90,7 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     logger.info("🛑 Shutting down...")
     shutdown_executor()
+    await llm.shutdown()
     logger.info("✅ Cleanup completed")
 
 
@@ -144,6 +148,9 @@ async def log_requests(request: Request, call_next):
 # Rules router FIRST — so /rules, /rules/suggestions, /rules/changelog
 # take precedence over mask.py's catch-all endpoints
 app.include_router(rules.router, prefix="/api/v1", tags=["Rules"])
+app.include_router(orgs.router, prefix="/api/v1", tags=["Organizations"])
+app.include_router(keys.router, prefix="/api/v1", tags=["Keys"])
+app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])
 app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])
 app.include_router(status.router, prefix="/api/v1", tags=["Status"])
 

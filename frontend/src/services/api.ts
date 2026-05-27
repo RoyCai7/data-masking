@@ -119,11 +119,24 @@ export interface RuleDetail extends MaskingRule {
   flags: string;
   strategy: 'asterisk' | 'placeholder' | 'partial' | 'hash';
   placeholder: string;
+  scope: 'system' | 'org' | 'private';
+  org_id?: string | null;
+  use_count?: number;
   is_builtin?: boolean;
   version?: number;
   created_at?: string;
   updated_at?: string;
   created_by?: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  owner?: string;
+  owner_key_prefix?: string;
+  invite_code?: string;
+  invite_code_expires_at?: string;
+  created_at?: string;
 }
 
 export interface RuleSuggestion {
@@ -156,8 +169,10 @@ export interface RuleChangelogEntry {
 }
 
 export interface ManagedKeyInfo {
+  id?: number;
   name: string;
   role: string;
+  org_id?: string;
   enabled: boolean;
   created_at: string;
   expires_at: string;
@@ -256,6 +271,52 @@ export const toggleRule = async (ruleId: string): Promise<{ message: string; rul
   return response.data;
 };
 
+export const promoteRule = async (
+  ruleId: string,
+  scope: 'org' | 'system' | 'private',
+  orgId?: string
+): Promise<{ message: string; rule: RuleDetail }> => {
+  const response = await api.patch(`/rules/${ruleId}/promote`, { scope, org_id: orgId });
+  return response.data;
+};
+
+// ─── Organization APIs ────────────────────────────────────────────────────────
+
+export const listOrgs = async (): Promise<{ total: number; orgs: Organization[] }> => {
+  const response = await api.get('/orgs');
+  return response.data;
+};
+
+export const createOrg = async (payload: { id: string; name: string }): Promise<{ message: string; org: Organization }> => {
+  const response = await api.post('/orgs', payload);
+  return response.data;
+};
+
+export const deleteOrg = async (orgId: string): Promise<{ message: string }> => {
+  const response = await api.delete(`/orgs/${orgId}`);
+  return response.data;
+};
+
+export const getMyOrg = async (): Promise<Organization> => {
+  const response = await api.get('/orgs/mine');
+  return response.data;
+};
+
+export const refreshInviteCode = async (orgId: string): Promise<{ message: string; invite_code: string; org: Organization }> => {
+  const response = await api.post(`/orgs/${orgId}/invite`);
+  return response.data;
+};
+
+export const joinOrg = async (invite_code: string): Promise<{ message: string; org_id: string; org_name: string }> => {
+  const response = await api.post('/orgs/join', { invite_code });
+  return response.data;
+};
+
+export const leaveOrg = async (): Promise<{ message: string }> => {
+  const response = await api.post('/orgs/leave');
+  return response.data;
+};
+
 export const deleteRule = async (ruleId: string): Promise<{ message: string }> => {
   const response = await api.delete(`/rules/${ruleId}`);
   return response.data;
@@ -330,13 +391,23 @@ export const listApiKeys = async (): Promise<{ total: number; keys: ManagedKeyIn
   return response.data;
 };
 
-export const createApiKey = async (payload: { name: string; role: 'admin' | 'user'; expires_days: number }): Promise<{ message: string; key: string; name: string; role: string; created_at: string; expires_at: string }> => {
+export const createApiKey = async (payload: { name: string; role: 'admin' | 'user'; expires_days: number; org_id?: string }): Promise<{ message: string; key: string; name: string; role: string; created_at: string; expires_at: string }> => {
   const response = await api.post('/keys', payload);
   return response.data;
 };
 
-export const disableApiKey = async (key: string): Promise<{ message: string }> => {
-  const response = await api.post('/keys/disable', { key });
+export const disableApiKey = async (key_id: number): Promise<{ message: string }> => {
+  const response = await api.post('/keys/disable', { key_id });
+  return response.data;
+};
+
+export const updateApiKey = async (payload: { key_id: number; org_id?: string; role?: string }): Promise<{ message: string; name: string; org_id: string; role: string }> => {
+  const response = await api.put('/keys/update', payload);
+  return response.data;
+};
+
+export const revealApiKey = async (key_id: number): Promise<{ key: string }> => {
+  const response = await api.get(`/keys/${key_id}/reveal`);
   return response.data;
 };
 
@@ -357,3 +428,68 @@ export const submitRuleSuggestion = async (payload: {
 };
 
 export { getSessionId };
+
+// ─── LLM / Regex Generation ───────────────────────────────────────────────────
+
+export interface OllamaModel {
+  name: string;
+  size: number;
+  modified_at: string;
+  details: Record<string, unknown>;
+}
+
+export interface LlmModelsResponse {
+  ollama_url: string;
+  total: number;
+  models: OllamaModel[];
+}
+
+export interface GenerateRegexRequest {
+  description: string;
+  model: string;
+  context?: string;
+  provider?: 'ollama' | 'opencode';
+}
+
+export interface GenerateRegexResponse {
+  pattern: string;
+  model: string;
+  provider: string;
+  explanation?: string | null;
+  raw_response: string;
+  suggested_name?: string | null;
+  suggested_category?: string | null;
+}
+
+export interface LlmProvider {
+  id: string;
+  name: string;
+  note: string;
+  kind: 'ollama' | 'openai_compat';
+  base_url: string;
+  default_model: string;
+  supports_model_list: boolean;
+}
+
+export interface LlmProvidersResponse {
+  total: number;
+  providers: LlmProvider[];
+}
+
+export const listLlmModels = async (): Promise<LlmModelsResponse> => {
+  const response = await api.get('/llm/models');
+  return response.data;
+};
+
+export const listLlmProviders = async (): Promise<LlmProvidersResponse> => {
+  const response = await api.get('/llm/providers');
+  return response.data;
+};
+
+export const generateRegex = async (
+  payload: GenerateRegexRequest,
+  options?: { signal?: AbortSignal },
+): Promise<GenerateRegexResponse> => {
+  const response = await api.post('/llm/generate-regex', payload, { signal: options?.signal });
+  return response.data;
+};

@@ -12,11 +12,15 @@ Usage:
     rules = rule_service.get_enabled_rules()   # fast, from cache
     rule_service.create_rule(data, "admin")     # writes DB + invalidates cache
 """
+from __future__ import annotations
 import re
 import logging
 import threading
-from typing import List, Optional, Dict
+from typing import TYPE_CHECKING, List, Optional, Dict
 from dataclasses import dataclass
+
+if TYPE_CHECKING:
+    from app.engine.rules import MaskingRule, MaskStrategy
 
 from app.engine.repository import (
     init_db,
@@ -27,6 +31,15 @@ from app.engine.repository import (
     update_rule as repo_update_rule,
     toggle_rule as repo_toggle_rule,
     delete_rule as repo_delete_rule,
+    set_scope as repo_set_scope,
+    set_visibility as repo_set_visibility,
+    increment_use_count as repo_increment_use_count,
+    list_orgs as repo_list_orgs,
+    get_org as repo_get_org,
+    create_org as repo_create_org,
+    delete_org as repo_delete_org,
+    set_org_invite_code as repo_set_org_invite_code,
+    get_org_by_invite_code as repo_get_org_by_invite_code,
     export_rules as repo_export_rules,
     import_rules as repo_import_rules,
     create_suggestion as repo_create_suggestion,
@@ -41,16 +54,17 @@ logger = logging.getLogger(__name__)
 
 
 # Re-use the same MaskingRule/MaskStrategy from rules.py to stay compatible
-from app.engine.rules import MaskingRule, MaskStrategy
+# (lazy import inside _db_row_to_masking_rule to avoid circular imports)
 
 
-def _db_row_to_masking_rule(row: dict) -> MaskingRule:
+def _db_row_to_masking_rule(row: dict) -> "MaskingRule":
     """Convert a DB row dict into a MaskingRule dataclass (with compiled regex)."""
+    from app.engine.rules import MaskingRule as _MaskingRule, MaskStrategy as _MaskStrategy  # lazy to break circular import
     flags = _parse_flags(row.get("flags", ""))
     pattern = re.compile(row["pattern"], flags)
-    strategy = MaskStrategy(row["strategy"])
+    strategy = _MaskStrategy(row["strategy"])
 
-    return MaskingRule(
+    return _MaskingRule(
         id=row["id"],
         name=row["name"],
         pattern=pattern,
@@ -168,6 +182,22 @@ class RuleService:
         self._invalidate()
         return result
 
+    def set_scope(self, rule_id: str, scope: str, org_id: Optional[str] = None, changed_by: str = "admin") -> dict:
+        """Change rule scope (private → org → system) → DB, then invalidate cache."""
+        result = repo_set_scope(rule_id, scope, org_id=org_id, changed_by=changed_by)
+        self._invalidate()
+        return result
+
+    def set_visibility(self, rule_id: str, visibility: str, changed_by: str = "admin") -> dict:
+        """Legacy alias: public→org (default), private→private."""
+        result = repo_set_visibility(rule_id, visibility, changed_by)
+        self._invalidate()
+        return result
+
+    def increment_use_count(self, rule_ids: List[str]) -> None:
+        """Bump use_count for given rules (call after mask job completes)."""
+        repo_increment_use_count(rule_ids)
+
     # ─── Suggestions ──────────────────────────────────────────────────────
 
     def create_suggestion(self, data: dict, submitted_by: str = "anonymous") -> dict:
@@ -207,9 +237,36 @@ class RuleService:
         """Full DB row for a rule (includes metadata like version, timestamps)."""
         return repo_get_rule(rule_id)
 
-    def list_rules_detailed(self, category: Optional[str] = None, enabled_only: bool = False) -> List[dict]:
-        """Full DB rows for listing (includes all metadata)."""
-        return repo_list_rules(category, enabled_only)
+    def list_rules_detailed(
+        self,
+        category: Optional[str] = None,
+        enabled_only: bool = False,
+        owner: Optional[str] = None,
+        org_id: Optional[str] = None,
+        role: str = "user",
+    ) -> List[dict]:
+        """Full DB rows for listing, scope-aware."""
+        return repo_list_rules(category, enabled_only, owner=owner, org_id=org_id, role=role)
+
+    # ─── Organizations ──────────────────────────────────────────────────
+
+    def list_orgs(self) -> List[dict]:
+        return repo_list_orgs()
+
+    def get_org(self, org_id: str) -> Optional[dict]:
+        return repo_get_org(org_id)
+
+    def create_org(self, org_id: str, name: str, owner: str = None, owner_key_prefix: str = None) -> dict:
+        return repo_create_org(org_id, name, owner=owner, owner_key_prefix=owner_key_prefix)
+
+    def delete_org(self, org_id: str) -> bool:
+        return repo_delete_org(org_id)
+
+    def set_org_invite_code(self, org_id: str, code: str, expires_days: int = 7) -> Optional[dict]:
+        return repo_set_org_invite_code(org_id, code, expires_days=expires_days)
+
+    def get_org_by_invite_code(self, code: str) -> Optional[dict]:
+        return repo_get_org_by_invite_code(code)
 
 
 # ─── Global Singleton ─────────────────────────────────────────────────────────

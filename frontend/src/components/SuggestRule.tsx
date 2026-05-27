@@ -1,12 +1,15 @@
 import { useState, type ChangeEvent } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LightBulbIcon,
+  SparklesIcon,
   XMarkIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { submitRuleSuggestion, getRules, MaskingRule } from '../services/api';
+import { submitRuleSuggestion, getRulesDetailed, RuleDetail } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { useAiRegex } from '../hooks/useAiRegex';
+import AiRegexPanel from './AiRegexPanel';
 
 interface SuggestRuleProps {
   onClose: () => void;
@@ -27,16 +30,30 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
   const [weight, setWeight] = useState(5);
   const [reason, setReason] = useState('');
 
-  const [existingRules, setExistingRules] = useState<MaskingRule[]>([]);
+  const [existingRules, setExistingRules] = useState<RuleDetail[]>([]);
   const [rulesLoaded, setRulesLoaded] = useState(false);
+  const [ruleTab, setRuleTab] = useState<'public' | 'private'>('public');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  const ai = useAiRegex({
+    onApply: (res) => {
+      setPattern(res.pattern);
+      setName((prev) => prev.trim() ? prev : (res.suggested_name ?? prev));
+      setCategory((prev) => prev.trim() ? prev : (res.suggested_category ?? prev));
+    },
+    onSuccess: (message) => {
+      setInfo(message);
+      window.setTimeout(() => setInfo(null), 2500);
+    },
+  });
 
   const loadExistingRules = async () => {
     if (rulesLoaded) return;
     try {
-      const data = await getRules();
+      const data = await getRulesDetailed();
       setExistingRules(data.rules || []);
       setRulesLoaded(true);
     } catch {
@@ -129,6 +146,9 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
               {error && (
                 <div className="p-3 rounded-lg bg-red-50 text-red-700 text-sm border border-red-200">{error}</div>
               )}
+              {info && (
+                <div className="p-3 rounded-lg bg-green-50 text-green-700 text-sm border border-green-200">{info}</div>
+              )}
 
               {/* Action type */}
               <div>
@@ -155,16 +175,53 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Target Rule</label>
                   {rulesLoaded && existingRules.length > 0 ? (
-                    <select
-                      value={ruleId}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleId(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
-                    >
-                      <option value="">— Select a rule —</option>
-                      {existingRules.map((r) => (
-                        <option key={r.id} value={r.id}>{r.id} — {r.name}</option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      {/* scope tab picker */}
+                      <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+                        <button
+                          onClick={() => { setRuleTab('public'); setRuleId(''); }}
+                          className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            ruleTab === 'public' ? 'bg-white shadow text-suse-green' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          🌐 Public
+                          <span className="ml-1 text-gray-400">
+                            ({existingRules.filter(r => r.scope === 'system' || r.scope === 'org').length})
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => { setRuleTab('private'); setRuleId(''); }}
+                          className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            ruleTab === 'private' ? 'bg-white shadow text-suse-green' : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          🔒 Private
+                          <span className="ml-1 text-gray-400">
+                            ({existingRules.filter(r => r.scope === 'private').length})
+                          </span>
+                        </button>
+                      </div>
+                      <select
+                        value={ruleId}
+                        onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleId(e.target.value)}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white"
+                      >
+                        <option value="">— Select a rule —</option>
+                        {existingRules
+                          .filter(r => ruleTab === 'public'
+                            ? (r.scope === 'system' || r.scope === 'org')
+                            : r.scope === 'private'
+                          )
+                          .map(r => (
+                            <option key={r.id} value={r.id}>
+                              {ruleTab === 'public'
+                                ? `${r.scope === 'system' ? '🌐' : '🏢'} ${r.id} — ${r.name}`
+                                : `🔒 ${r.id} — ${r.name}`
+                              }
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                   ) : (
                     <input
                       value={ruleId}
@@ -190,9 +247,22 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Regex Pattern</label>
+                    <div className="mb-1 flex items-center justify-between">
+                      <label className="block text-xs font-medium text-gray-500">Regex Pattern</label>
+                      <button
+                        type="button"
+                        onClick={ai.openPanel}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium hover:from-violet-600 hover:to-purple-700 transition-all"
+                      >
+                        <SparklesIcon className="w-3.5 h-3.5" />
+                        Generate with AI
+                      </button>
+                    </div>
                     <textarea value={pattern} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setPattern(e.target.value)} placeholder="e.g. AKIA[0-9A-Z]{16}" rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono" />
                   </div>
+                  <AnimatePresence>
+                    {ai.showAiPanel && <AiRegexPanel {...ai} />}
+                  </AnimatePresence>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-500 mb-1">Strategy</label>

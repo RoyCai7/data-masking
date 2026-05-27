@@ -6,6 +6,8 @@ import {
   CheckCircleIcon,
   ClipboardIcon,
   DocumentArrowUpIcon,
+  EyeIcon,
+  EyeSlashIcon,
   KeyIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -16,24 +18,33 @@ import {
   RuleDetail,
   RuleSuggestion,
   ManagedKeyInfo,
+  Organization,
   createApiKey,
   createRule,
   deleteRule,
   disableApiKey,
+  updateApiKey,
   exportRules,
   importRules,
   listApiKeys,
   listRuleChangelog,
   listRuleSuggestions,
+  listOrgs,
+  createOrg,
+  deleteOrg,
   getMyKeyInfo,
   getRulesDetailed,
   reviewRuleSuggestion,
   toggleRule,
+  promoteRule,
   updateRule,
+  revealApiKey,
 } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
+import { useAiRegex } from '../hooks/useAiRegex';
+import AiRegexPanel from './AiRegexPanel';
 
-type AdminTab = 'keys' | 'rules' | 'suggestions' | 'history';
+type AdminTab = 'keys' | 'rules' | 'suggestions' | 'history' | 'orgs';
 
 interface AdminConsoleProps {
   onClose: () => void;
@@ -49,6 +60,7 @@ const emptyRule: RuleDetail = {
   placeholder: '[MASKED]',
   weight: 5,
   enabled: true,
+  scope: 'private',
 };
 
 const tabs: Array<{ id: AdminTab; label: string }> = [
@@ -56,6 +68,7 @@ const tabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'rules', label: 'Rules' },
   { id: 'suggestions', label: 'Rule Approvals' },
   { id: 'history', label: 'History' },
+  { id: 'orgs', label: '🏢 Orgs' },
 ];
 
 export default function AdminConsole({ onClose }: AdminConsoleProps) {
@@ -67,9 +80,12 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const [success, setSuccess] = useState<string | null>(null);
 
   const [keys, setKeys] = useState<ManagedKeyInfo[]>([]);
+  const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
+  const [revealingKeyId, setRevealingKeyId] = useState<number | null>(null);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyRole, setNewKeyRole] = useState<'admin' | 'user'>('user');
   const [newKeyExpiry, setNewKeyExpiry] = useState(365);
+  const [newKeyOrg, setNewKeyOrg] = useState('default');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   const [rules, setRules] = useState<RuleDetail[]>([]);
@@ -78,16 +94,34 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const [isEditingRule, setIsEditingRule] = useState(false);
   const [importText, setImportText] = useState('');
 
+
   const [suggestionStatus, setSuggestionStatus] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [suggestions, setSuggestions] = useState<RuleSuggestion[]>([]);
 
   const [historyRuleId, setHistoryRuleId] = useState('');
   const [historyEntries, setHistoryEntries] = useState<RuleChangelogEntry[]>([]);
 
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [newOrgId, setNewOrgId] = useState('');
+  const [newOrgName, setNewOrgName] = useState('');
+
   const showMessage = (message: string) => {
     setSuccess(message);
     window.setTimeout(() => setSuccess(null), 3000);
   };
+
+  const ai = useAiRegex({
+    onApply: (res) =>
+      setRuleForm((prev: RuleDetail) => ({
+        ...prev,
+        pattern: res.pattern,
+        name: prev.name.trim() ? prev.name : (res.suggested_name ?? prev.name),
+        category: (prev.category === 'custom' || !prev.category.trim())
+          ? (res.suggested_category ?? prev.category)
+          : prev.category,
+      })),
+    onSuccess: showMessage,
+  });
 
   const handleError = (err: any, fallback: string) => {
     setError(err?.response?.data?.detail || err?.message || fallback);
@@ -113,16 +147,46 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     setHistoryEntries(response.changelog || []);
   }, [historyRuleId]);
 
+  const loadOrgs = useCallback(async () => {
+    const response = await listOrgs();
+    setOrgs(response.orgs || []);
+  }, []);
+
+  const handleCreateOrg = async () => {
+    if (!newOrgId.trim() || !newOrgName.trim()) return;
+    setLoading(true); setError(null);
+    try {
+      await createOrg({ id: newOrgId.trim(), name: newOrgName.trim() });
+      setNewOrgId(''); setNewOrgName('');
+      await loadOrgs();
+      showMessage('Organization created');
+    } catch (err) { handleError(err, 'Failed to create org'); }
+    finally { setLoading(false); }
+  };
+
+  const handleDeleteOrg = async (orgId: string) => {
+    if (!window.confirm(`Delete organization '${orgId}'?`)) return;
+    setLoading(true); setError(null);
+    try {
+      await deleteOrg(orgId);
+      await loadOrgs();
+      showMessage('Organization deleted');
+    } catch (err) { handleError(err, 'Failed to delete org'); }
+    finally { setLoading(false); }
+  };
+
   const refreshActiveTab = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
       if (activeTab === 'keys') {
-        await loadKeys();
+        await Promise.all([loadKeys(), loadOrgs()]);
       } else if (activeTab === 'rules') {
         await loadRules();
       } else if (activeTab === 'suggestions') {
         await loadSuggestions();
+      } else if (activeTab === 'orgs') {
+        await loadOrgs();
       } else {
         await loadHistory();
       }
@@ -131,7 +195,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, loadHistory, loadKeys, loadRules, loadSuggestions]);
+  }, [activeTab, loadHistory, loadKeys, loadOrgs, loadRules, loadSuggestions]);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -142,7 +206,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
           throw new Error('Admin role required');
         }
         setIsReady(true);
-        await loadKeys();
+        await Promise.all([loadKeys(), loadOrgs()]);
       } catch (err) {
         handleError(err, 'Admin role required');
       } finally {
@@ -186,11 +250,13 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
         name: newKeyName.trim(),
         role: newKeyRole,
         expires_days: newKeyExpiry,
+        org_id: newKeyOrg,
       });
       setCreatedKey(result.key);
       setNewKeyName('');
       setNewKeyRole('user');
       setNewKeyExpiry(365);
+      setNewKeyOrg('default');
       await loadKeys();
       showMessage('API key created');
     } catch (err) {
@@ -200,14 +266,30 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     }
   };
 
-  const handleDisableKey = async (keyPreview: string) => {
-    const target = window.prompt(`Paste the full key to disable this entry (${keyPreview})`);
-    if (!target) return;
+  const handleRevealKey = async (keyId: number) => {
+    if (revealedKeys[keyId]) {
+      // hide it
+      setRevealedKeys(prev => { const n = { ...prev }; delete n[keyId]; return n; });
+      return;
+    }
+    setRevealingKeyId(keyId);
+    try {
+      const { key } = await revealApiKey(keyId);
+      setRevealedKeys(prev => ({ ...prev, [keyId]: key }));
+    } catch {
+      showMessage('Could not retrieve key (not stored)');
+    } finally {
+      setRevealingKeyId(null);
+    }
+  };
+
+  const handleDisableKey = async (keyId: number) => {
+    if (!window.confirm('Disable this API key?')) return;
 
     setLoading(true);
     setError(null);
     try {
-      await disableApiKey(target.trim());
+      await disableApiKey(keyId);
       await loadKeys();
       showMessage('API key disabled');
     } catch (err) {
@@ -215,6 +297,17 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpdateKeyOrg = async (keyId: number, orgId: string) => {
+    setLoading(true); setError(null);
+    try {
+      await updateApiKey({ key_id: keyId, org_id: orgId });
+      await loadKeys();
+      showMessage('Organization updated');
+    } catch (err) {
+      handleError(err, 'Failed to update key');
+    } finally { setLoading(false); }
   };
 
   const handleSaveRule = async () => {
@@ -276,6 +369,27 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
       showMessage(`Rule '${ruleId}' deleted`);
     } catch (err) {
       handleError(err, 'Failed to delete rule');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePromoteRule = async (ruleId: string, currentScope: RuleDetail['scope']) => {
+    const nextScope: RuleDetail['scope'] = currentScope === 'private' ? 'org'
+      : currentScope === 'org' ? 'system'
+      : 'private';
+    const label = nextScope === 'org' ? 'org (shared with org)'
+      : nextScope === 'system' ? 'system (all users)'
+      : 'private';
+    if (!window.confirm(`Change rule '${ruleId}' scope to ${label}?`)) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await promoteRule(ruleId, nextScope);
+      await loadRules();
+      showMessage(`Rule '${ruleId}' is now ${nextScope}`);
+    } catch (err) {
+      handleError(err, 'Failed to update scope');
     } finally {
       setLoading(false);
     }
@@ -449,6 +563,12 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                   </select>
                   <input type="number" min={1} value={newKeyExpiry} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewKeyExpiry(Number(e.target.value) || 365)} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
                 </div>
+                <select value={newKeyOrg} onChange={(e: ChangeEvent<HTMLSelectElement>) => setNewKeyOrg(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+                  <option value="default">🏠 default (no org)</option>
+                  {orgs.filter(o => o.id !== 'default').map(o => (
+                    <option key={o.id} value={o.id}>🏢 {o.name} ({o.id})</option>
+                  ))}
+                </select>
                 <button onClick={handleCreateKey} disabled={loading || !newKeyName.trim()} className="w-full px-4 py-2.5 rounded-lg bg-suse-green text-white font-medium disabled:opacity-50">
                   {loading ? 'Working…' : 'Create Key'}
                 </button>
@@ -469,18 +589,57 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                 </div>
                 <div className="divide-y divide-gray-100">
                   {keys.filter(k => k.enabled).map((key) => (
-                    <div key={`${key.name}-${key.key || key.key_preview}`} className="px-5 py-4 flex items-center justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
+                    <div key={`${key.name}-${key.id ?? key.key_preview}`} className="px-5 py-4 flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-gray-900">{key.name}</span>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${key.role === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700'}`}>{key.role}</span>
+                          {key.org_id && key.org_id !== 'default' && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">🏢 {key.org_id}</span>
+                          )}
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${key.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{key.enabled ? 'enabled' : 'disabled'}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1 font-mono">{key.key || key.key_preview}</p>
-                        <p className="text-xs text-gray-400 mt-1">Created {key.created_at} · Expires {key.expires_at}</p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <code className="text-xs text-gray-500 font-mono break-all">
+                            {revealedKeys[key.id!] ?? (key.key ?? key.key_preview)}
+                          </code>
+                          <button
+                            onClick={() => handleRevealKey(key.id!)}
+                            disabled={revealingKeyId === key.id}
+                            className="shrink-0 p-0.5 rounded text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                            title={revealedKeys[key.id!] ? 'Hide key' : 'Reveal full key'}
+                          >
+                            {revealedKeys[key.id!]
+                              ? <EyeSlashIcon className="w-3.5 h-3.5" />
+                              : <EyeIcon className="w-3.5 h-3.5" />}
+                          </button>
+                          {revealedKeys[key.id!] && (
+                            <button
+                              onClick={() => copyToClipboard(revealedKeys[key.id!])}
+                              className="shrink-0 p-0.5 rounded text-gray-400 hover:text-suse-green"
+                              title="Copy key"
+                            >
+                              <ClipboardIcon className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">Created {key.created_at} · Expires {key.expires_at}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <select
+                            defaultValue={key.org_id ?? 'default'}
+                            onChange={(e: ChangeEvent<HTMLSelectElement>) => handleUpdateKeyOrg(key.id!, e.target.value)}
+                            className="text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white text-gray-700"
+                          >
+                            <option value="default">🏠 default</option>
+                            {orgs.filter(o => o.id !== 'default').map(o => (
+                              <option key={o.id} value={o.id}>🏢 {o.name} ({o.id})</option>
+                            ))}
+                          </select>
+                          <span className="text-xs text-gray-400">org</span>
+                        </div>
                       </div>
                       {key.enabled && (
-                        <button onClick={() => handleDisableKey(key.key || key.key_preview)} className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm">
+                        <button onClick={() => handleDisableKey(key.id!)} className="px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-sm shrink-0">
                           Disable
                         </button>
                       )}
@@ -499,26 +658,89 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                       <button onClick={resetRuleForm} className="text-sm text-gray-500 hover:text-gray-700">New Rule</button>
                     )}
                   </div>
-                  <input disabled={isEditingRule} value={ruleForm.id} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, id: e.target.value }))} placeholder="rule_id" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 disabled:bg-gray-50" />
-                  <input value={ruleForm.name} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, name: e.target.value }))} placeholder="Rule name" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input value={ruleForm.category} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, category: e.target.value }))} placeholder="category" className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                    <select value={ruleForm.strategy} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, strategy: e.target.value as RuleDetail['strategy'] }))} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
-                      <option value="placeholder">placeholder</option>
-                      <option value="partial">partial</option>
-                      <option value="asterisk">asterisk</option>
-                      <option value="hash">hash</option>
-                    </select>
-                  </div>
-                  <input value={ruleForm.flags} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, flags: e.target.value }))} placeholder="Regex flags, e.g. IGNORECASE" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                  <input value={ruleForm.placeholder} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, placeholder: e.target.value }))} placeholder="Replacement text" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                  <textarea value={ruleForm.pattern} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, pattern: e.target.value }))} placeholder="Regex pattern" rows={5} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input type="number" min={0} max={100} value={ruleForm.weight} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, weight: Number(e.target.value) || 0 }))} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
-                    <label className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700">
-                      <input type="checkbox" checked={ruleForm.enabled} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, enabled: e.target.checked }))} />
-                      Enabled
-                    </label>
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Basic Info</p>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Rule ID</label>
+                          <input disabled={isEditingRule} value={ruleForm.id} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, id: e.target.value }))} placeholder="rule_id" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 disabled:bg-gray-50" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Rule Name</label>
+                          <input value={ruleForm.name} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, name: e.target.value }))} placeholder="Rule name" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Category</label>
+                          <input value={ruleForm.category} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, category: e.target.value }))} placeholder="category" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Regex Flags</label>
+                          <input value={ruleForm.flags} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, flags: e.target.value }))} placeholder="e.g. IGNORECASE" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pattern</p>
+                        <button
+                          type="button"
+                          onClick={ai.openPanel}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm"
+                        >
+                          <SparklesIcon className="w-3.5 h-3.5" />
+                          Generate with AI
+                        </button>
+                      </div>
+                      <textarea value={ruleForm.pattern} onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, pattern: e.target.value }))} placeholder="Regex pattern" rows={5} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 font-mono" />
+                    </div>
+
+                    <AnimatePresence>
+                      {ai.showAiPanel && <AiRegexPanel {...ai} />}
+                    </AnimatePresence>
+
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Masking Output</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Strategy</label>
+                          <select value={ruleForm.strategy} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, strategy: e.target.value as RuleDetail['strategy'] }))} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+                            <option value="placeholder">placeholder</option>
+                            <option value="partial">partial</option>
+                            <option value="asterisk">asterisk</option>
+                            <option value="hash">hash</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Placeholder</label>
+                          <input value={ruleForm.placeholder} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, placeholder: e.target.value }))} placeholder="Replacement text" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Weight</label>
+                          <input type="number" min={0} max={100} value={ruleForm.weight} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, weight: Number(e.target.value) || 0 }))} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Scope</label>
+                          <select value={ruleForm.scope ?? 'private'} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, scope: e.target.value as RuleDetail['scope'] }))} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+                            <option value="private">🔒 private (owner only)</option>
+                            <option value="org">🏢 org (org members)</option>
+                            <option value="system">🌐 system (all users)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                          <label className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 h-[42px]">
+                            <input type="checkbox" checked={ruleForm.enabled} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, enabled: e.target.checked }))} />
+                            Enabled
+                          </label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <button onClick={handleSaveRule} disabled={loading || !ruleForm.id || !ruleForm.name || !ruleForm.pattern} className="w-full px-4 py-2.5 rounded-lg bg-suse-green text-white font-medium disabled:opacity-50">
                     {loading ? 'Working…' : isEditingRule ? 'Update Rule' : 'Create Rule'}
@@ -553,6 +775,14 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                             <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">{rule.category}</span>
                             <span className={`px-2 py-0.5 rounded-full text-xs ${rule.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{rule.enabled ? 'enabled' : 'disabled'}</span>
                             {rule.is_builtin ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">built-in</span> : <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">custom</span>}
+                            {rule.scope === 'system'
+                              ? <span className="px-2 py-0.5 rounded-full text-xs bg-teal-100 text-teal-700" title="Visible to all users">🌐 system</span>
+                              : rule.scope === 'org'
+                              ? <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700" title="Visible to org members">🏢 org</span>
+                              : <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600" title="Only visible to owner">🔒 private</span>}
+                            {(rule.use_count ?? 0) > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700" title="Times this rule matched">🔥 {rule.use_count}</span>
+                            )}
                           </div>
                           <p className="mt-2 text-xs text-gray-500 font-mono break-all">{rule.pattern}</p>
                           <p className="mt-1 text-xs text-gray-400">strategy={rule.strategy} · weight={rule.weight} · placeholder={rule.placeholder}</p>
@@ -561,10 +791,53 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                           <button onClick={() => handleEditRule(rule)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">Edit</button>
                           <button onClick={() => handleToggleRule(rule.id)} className="px-3 py-2 rounded-lg border border-amber-200 text-sm text-amber-700 hover:bg-amber-50">Toggle</button>
                           {!rule.is_builtin && (
+                            <button
+                              onClick={() => handlePromoteRule(rule.id, rule.scope ?? 'private')}
+                              className={rule.scope === 'system'
+                                ? 'px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50'
+                                : rule.scope === 'org'
+                                ? 'px-3 py-2 rounded-lg border border-teal-200 text-sm text-teal-700 hover:bg-teal-50'
+                                : 'px-3 py-2 rounded-lg border border-blue-200 text-sm text-blue-700 hover:bg-blue-50'}
+                            >
+                              {rule.scope === 'system' ? '↓ Demote' : rule.scope === 'org' ? '↑ To System' : '↑ To Org'}
+                            </button>
+                          )}
+                          {!rule.is_builtin && (
                             <button onClick={() => handleDeleteRule(rule.id)} className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50">Delete</button>
                           )}
                         </div>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'orgs' ? (
+            <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-6">
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+                <h3 className="font-semibold text-gray-900">Create Organization</h3>
+                <input value={newOrgId} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewOrgId(e.target.value)} placeholder="org-id (no spaces)" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                <input value={newOrgName} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewOrgName(e.target.value)} placeholder="Display name" className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
+                <button onClick={handleCreateOrg} disabled={!newOrgId.trim() || !newOrgName.trim()} className="w-full px-4 py-2.5 rounded-lg bg-suse-green text-white text-sm font-medium hover:bg-suse-green-dark disabled:opacity-50">Create</button>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-200">
+                  <h3 className="font-semibold text-gray-900">Organizations <span className="text-gray-400 font-normal">({orgs.length})</span></h3>
+                </div>
+                <div className="divide-y divide-gray-100 max-h-[60vh] overflow-auto">
+                  {orgs.map((org) => (
+                    <div key={org.id} className="px-5 py-4 flex items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{org.name}</span>
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700 font-mono">{org.id}</span>
+                          {org.id === 'default' && <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">system default</span>}
+                        </div>
+                        {org.created_at && <p className="text-xs text-gray-400 mt-1">Created: {org.created_at}</p>}
+                      </div>
+                      {org.id !== 'default' && (
+                        <button onClick={() => handleDeleteOrg(org.id)} className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50">Delete</button>
+                      )}
                     </div>
                   ))}
                 </div>

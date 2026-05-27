@@ -4,6 +4,8 @@ import { getApiKey, getMyKeyInfo, getSystemStatus, KeyInfo, SystemStatus } from 
 import AdminConsole from './AdminConsole';
 import Settings from './Settings';
 import SuggestRule from './SuggestRule';
+import RuleList from './RuleList';
+import MyOrg from './MyOrg';
 
 // SUSE Chameleon Logo SVG
 const SuseLogo = () => (
@@ -20,6 +22,8 @@ export default function Header() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
   const [showSuggestRule, setShowSuggestRule] = useState(false);
+  const [showRuleList, setShowRuleList] = useState(false);
+  const [showMyOrg, setShowMyOrg] = useState(false);
 
   const refreshKeyInfo = useCallback(async () => {
     if (!getApiKey()) {
@@ -102,6 +106,26 @@ export default function Header() {
             </a>
 
             <button
+              onClick={() => setShowRuleList(true)}
+              className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
+              title="Browse Rules"
+            >
+              <span className="text-base leading-none">📋</span>
+              <span>Rules</span>
+            </button>
+
+            {keyInfo && (
+              <button
+                onClick={() => setShowMyOrg(true)}
+                className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
+                title="My Organization"
+              >
+                <span className="text-base leading-none">🏢</span>
+                <span>My Org</span>
+              </button>
+            )}
+
+            <button
               onClick={() => setShowSuggestRule(true)}
               className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
               title="New Rule"
@@ -136,6 +160,8 @@ export default function Header() {
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
       {showAdminConsole && <AdminConsole onClose={() => setShowAdminConsole(false)} />}
       {showSuggestRule && <SuggestRule onClose={() => setShowSuggestRule(false)} />}
+      {showRuleList && <RuleList onClose={() => setShowRuleList(false)} />}
+      {showMyOrg && <MyOrg onClose={() => setShowMyOrg(false)} />}
     </header>
   );
 }
