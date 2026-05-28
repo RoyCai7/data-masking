@@ -249,13 +249,14 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
         }
         setIsAdmin(admin);
         setIsOrgOwner(orgOwner);
-        if (admin) {
-          setAdminMode(true);
-          setActiveTab('keys');
-        } else if (orgOwner) {
+        if (orgOwner) {
+          // Default to org owner mode (even if also admin)
           setAdminMode(false);
           setActiveTab('org_rules');
           loadOrgCustomRuleSet();
+        } else if (admin) {
+          setAdminMode(true);
+          setActiveTab('keys');
         }
         setIsReady(true);
         if (admin) await Promise.all([loadKeys(), loadOrgs()]);
