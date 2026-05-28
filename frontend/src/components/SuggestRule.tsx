@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LightBulbIcon,
@@ -6,7 +6,7 @@ import {
   XMarkIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { submitRuleSuggestion, getRulesDetailed, RuleDetail } from '../services/api';
+import { submitRuleSuggestion, getRulesDetailed, getMyKeyInfo, getApiKey, RuleDetail } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useAiRegex } from '../hooks/useAiRegex';
 import AiRegexPanel from './AiRegexPanel';
@@ -19,6 +19,8 @@ type SuggestionAction = 'create' | 'modify' | 'disable';
 
 export default function SuggestRule({ onClose }: SuggestRuleProps) {
   const dialogRef = useModalA11y(onClose);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isOrgOwner, setIsOrgOwner] = useState(false);
   const [action, setAction] = useState<SuggestionAction>('create');
   const [ruleId, setRuleId] = useState('');
   const [name, setName] = useState('');
@@ -49,6 +51,14 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
       window.setTimeout(() => setInfo(null), 2500);
     },
   });
+
+  useEffect(() => {
+    if (!getApiKey()) return;
+    getMyKeyInfo().then((info) => {
+      setIsAdmin(info.role === 'admin');
+      setIsOrgOwner(info.is_org_owner === true);
+    }).catch(() => {});
+  }, []);
 
   const loadExistingRules = async () => {
     if (rulesLoaded) return;
@@ -123,7 +133,11 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
             </div>
             <div>
               <h2 className="text-lg font-bold text-gray-900">Suggest a Rule Change</h2>
-              <p className="text-xs text-gray-500">Your suggestion will be reviewed by an admin</p>
+              <p className="text-xs text-gray-500">
+                {isAdmin || isOrgOwner
+                  ? 'You can review and approve suggestions directly'
+                  : 'Your suggestion will be reviewed by your org owner or admin'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
@@ -136,7 +150,11 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
             <div className="py-8 text-center space-y-3">
               <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto" />
               <p className="text-lg font-semibold text-gray-900">Suggestion Submitted</p>
-              <p className="text-sm text-gray-500">An admin will review your suggestion. Thank you!</p>
+              <p className="text-sm text-gray-500">
+                {isAdmin || isOrgOwner
+                  ? 'You can review and approve it now in the Rule Approvals tab.'
+                  : 'Your org owner or admin will review your suggestion. Thank you!'}
+              </p>
               <button onClick={onClose} className="mt-4 px-6 py-2.5 bg-suse-green text-white rounded-lg font-medium">
                 Close
               </button>
