@@ -46,7 +46,7 @@ import { useModalA11y } from '../hooks/useModalA11y';
 import { useAiRegex } from '../hooks/useAiRegex';
 import AiRegexPanel from './AiRegexPanel';
 
-type AdminTab = 'keys' | 'rules' | 'suggestions' | 'history' | 'orgs';
+type AdminTab = 'keys' | 'system_rules' | 'org_rules' | 'suggestions' | 'history' | 'orgs';
 
 interface AdminConsoleProps {
   onClose: () => void;
@@ -65,18 +65,25 @@ const emptyRule: RuleDetail = {
   scope: 'private',
 };
 
-const tabs: Array<{ id: AdminTab; label: string }> = [
+// Admin sees all tabs; org owner only sees org_rules, suggestions, history
+const adminTabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'keys', label: 'Keys' },
-  { id: 'rules', label: 'Rules' },
+  { id: 'system_rules', label: '🌐 System Rules' },
+  { id: 'org_rules', label: '🏢 Org Rules' },
   { id: 'suggestions', label: 'Rule Approvals' },
   { id: 'history', label: 'History' },
-  { id: 'orgs', label: '🏢 Orgs' },
+  { id: 'orgs', label: 'Orgs' },
+];
+const orgOwnerTabs: Array<{ id: AdminTab; label: string }> = [
+  { id: 'org_rules', label: 'Rules' },
+  { id: 'suggestions', label: 'Rule Approvals' },
+  { id: 'history', label: 'History' },
 ];
 
 export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const dialogRef = useModalA11y(onClose);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>('rules');
+  const [activeTab, setActiveTab] = useState<AdminTab>('org_rules');
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +218,8 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     try {
       if (activeTab === 'keys') {
         await Promise.all([loadKeys(), loadOrgs()]);
-      } else if (activeTab === 'rules') {
+      } else if (activeTab === 'system_rules' || activeTab === 'org_rules') {
+        if (activeTab === 'org_rules') await loadOrgCustomRuleSet();
         await loadRules();
       } else if (activeTab === 'suggestions') {
         await loadSuggestions();
@@ -225,7 +233,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, loadHistory, loadKeys, loadOrgs, loadRules, loadSuggestions]);
+  }, [activeTab, loadHistory, loadKeys, loadOrgs, loadOrgCustomRuleSet, loadRules, loadSuggestions]);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -238,9 +246,10 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
           throw new Error('Admin or org owner role required');
         }
         setIsAdmin(admin);
-        // org owner starts on rules tab; admin can see keys tab
-        if (!admin && orgOwner) {
-          setActiveTab('rules');
+        if (admin) {
+          setActiveTab('keys');
+        } else if (orgOwner) {
+          setActiveTab('org_rules');
           loadOrgCustomRuleSet();
         }
         setIsReady(true);
@@ -266,17 +275,22 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   }, [suggestionStatus, isReady, activeTab, refreshActiveTab]);
 
   const filteredRules = useMemo(() => {
+    // system_rules tab → only system-scope; org_rules tab → org + private
+    const base = activeTab === 'system_rules'
+      ? rules.filter((r: RuleDetail) => r.scope === 'system')
+      : rules.filter((r: RuleDetail) => r.scope !== 'system');
     const keyword = ruleFilter.trim().toLowerCase();
-    if (!keyword) return rules;
-    return rules.filter((rule: RuleDetail) =>
+    if (!keyword) return base;
+    return base.filter((rule: RuleDetail) =>
       [rule.id, rule.name, rule.category, rule.pattern].some((value) =>
         value?.toLowerCase().includes(keyword)
       )
     );
-  }, [ruleFilter, rules]);
+  }, [ruleFilter, rules, activeTab]);
 
   const resetRuleForm = () => {
-    setRuleForm(emptyRule);
+    const defaultScope = activeTab === 'system_rules' ? 'system' : 'org';
+    setRuleForm({ ...emptyRule, scope: defaultScope });
     setIsEditingRule(false);
   };
 
@@ -373,7 +387,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const handleEditRule = (rule: RuleDetail) => {
     setRuleForm(rule);
     setIsEditingRule(true);
-    setActiveTab('rules');
+    setActiveTab(rule.scope === 'system' ? 'system_rules' : 'org_rules');
     setError(null);
   };
 
@@ -413,9 +427,10 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   };
 
   const handlePromoteRule = async (ruleId: string, currentScope: RuleDetail['scope']) => {
-    const nextScope: RuleDetail['scope'] = currentScope === 'private' ? 'org'
-      : currentScope === 'org' ? 'system'
-      : 'private';
+    // Admin cycles private→org→system→private; org owner only private↔org
+    const nextScope: RuleDetail['scope'] = isAdmin
+      ? (currentScope === 'private' ? 'org' : currentScope === 'org' ? 'system' : 'private')
+      : (currentScope === 'private' ? 'org' : 'private');
     const label = nextScope === 'org' ? 'org (shared with org)'
       : nextScope === 'system' ? 'system (all users)'
       : 'private';
@@ -541,7 +556,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
 
         <div className="px-6 pt-4 flex items-center justify-between gap-4 border-b border-gray-100">
           <div className="flex gap-2 overflow-x-auto pb-4">
-            {tabs.filter(tab => isAdmin || ['rules', 'suggestions', 'history'].includes(tab.id)).map((tab) => (
+            {(isAdmin ? adminTabs : orgOwnerTabs).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -686,12 +701,18 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                 </div>
               </div>
             </div>
-          ) : activeTab === 'rules' ? (
+          ) : (activeTab === 'system_rules' || activeTab === 'org_rules') ? (
             <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6">
               <div className="space-y-6">
                 <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900">{isEditingRule ? `Edit Rule: ${ruleForm.id}` : 'Create Rule'}</h3>
+                    <h3 className="font-semibold text-gray-900">
+                      {isEditingRule
+                        ? `Edit Rule: ${ruleForm.id}`
+                        : activeTab === 'system_rules'
+                        ? 'Create System Rule'
+                        : 'Create Org Rule'}
+                    </h3>
                     {isEditingRule && (
                       <button onClick={resetRuleForm} className="text-sm text-gray-500 hover:text-gray-700">New Rule</button>
                     )}
@@ -764,11 +785,16 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-500 mb-1">Scope</label>
-                          <select value={ruleForm.scope ?? 'private'} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, scope: e.target.value as RuleDetail['scope'] }))} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
-                            <option value="private">🔒 private (owner only)</option>
-                            <option value="org">🏢 org (org members)</option>
-                            {isAdmin && <option value="system">🌐 system (all users)</option>}
-                          </select>
+                          {activeTab === 'system_rules' ? (
+                            <div className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-500 bg-gray-50">
+                              🌐 system (all users)
+                            </div>
+                          ) : (
+                            <select value={ruleForm.scope ?? 'org'} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, scope: e.target.value as RuleDetail['scope'] }))} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+                              <option value="private">🔒 private (owner only)</option>
+                              <option value="org">🏢 org (org members)</option>
+                            </select>
+                          )}
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
@@ -848,7 +874,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                         <div className="flex flex-wrap gap-2 justify-end">
                           <button onClick={() => handleEditRule(rule)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">Edit</button>
                           <button onClick={() => handleToggleRule(rule.id)} className="px-3 py-2 rounded-lg border border-amber-200 text-sm text-amber-700 hover:bg-amber-50">Toggle</button>
-                          {!rule.is_builtin && isAdmin && (
+                          {!rule.is_builtin && (
                             <button
                               onClick={() => handlePromoteRule(rule.id, rule.scope ?? 'private')}
                               className={rule.scope === 'system'
@@ -857,7 +883,11 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                                 ? 'px-3 py-2 rounded-lg border border-teal-200 text-sm text-teal-700 hover:bg-teal-50'
                                 : 'px-3 py-2 rounded-lg border border-blue-200 text-sm text-blue-700 hover:bg-blue-50'}
                             >
-                              {rule.scope === 'system' ? '↓ Demote' : rule.scope === 'org' ? '↑ To System' : '↑ To Org'}
+                              {rule.scope === 'system'
+                                ? '↓ Demote'
+                                : rule.scope === 'org'
+                                ? (isAdmin ? '↑ To System' : '↓ To Private')
+                                : '↑ To Org'}
                             </button>
                           )}
                           {!rule.is_builtin && (
@@ -904,7 +934,10 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
           ) : activeTab === 'suggestions' ? (
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <h3 className="font-semibold text-gray-900">Rule Approvals</h3>
+                <div>
+                  <h3 className="font-semibold text-gray-900">Rule Approvals</h3>
+                  {isAdmin && <p className="text-xs text-gray-400 mt-0.5">Showing all suggestions · Org-scoped suggestions should be delegated to org owners</p>}
+                </div>
                 <select value={suggestionStatus} onChange={(e: ChangeEvent<HTMLSelectElement>) => setSuggestionStatus(e.target.value as typeof suggestionStatus)} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white w-full md:w-48">
                   <option value="pending">pending</option>
                   <option value="approved">approved</option>
