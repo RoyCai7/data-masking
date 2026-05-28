@@ -65,12 +65,11 @@ const emptyRule: RuleDetail = {
   scope: 'private',
 };
 
-// Admin sees all tabs; org owner only sees org_rules, suggestions, history
+// Admin manages platform-level concerns only (no org rules)
 const adminTabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'keys', label: 'Keys' },
   { id: 'orgs', label: 'Orgs' },
   { id: 'system_rules', label: '🌐 System Rules' },
-  { id: 'org_rules', label: '🏢 Org Rules' },
   { id: 'suggestions', label: 'Rule Approvals' },
   { id: 'history', label: 'History' },
 ];
@@ -83,7 +82,7 @@ const orgOwnerTabs: Array<{ id: AdminTab; label: string }> = [
 export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const dialogRef = useModalA11y(onClose);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>('org_rules');
+  const [activeTab, setActiveTab] = useState<AdminTab>('keys');
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -387,7 +386,8 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const handleEditRule = (rule: RuleDetail) => {
     setRuleForm(rule);
     setIsEditingRule(true);
-    setActiveTab(rule.scope === 'system' ? 'system_rules' : 'org_rules');
+    // Admin console only has system_rules tab; org owners use org_rules tab.
+    setActiveTab(isAdmin ? 'system_rules' : (rule.scope === 'system' ? 'system_rules' : 'org_rules'));
     setError(null);
   };
 
