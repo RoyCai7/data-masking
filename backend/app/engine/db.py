@@ -35,14 +35,22 @@ def _get_conn() -> sqlite3.Connection:
 # ─── Schema Initialization ────────────────────────────────────────────────────
 
 _SCHEMA_SQL = """
+-- Track applied migrations so data-modifying steps run exactly once
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version     INTEGER PRIMARY KEY,
+    applied_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    description TEXT
+);
+
 CREATE TABLE IF NOT EXISTS organizations (
-    id                    TEXT PRIMARY KEY,
-    name                  TEXT NOT NULL,
-    owner                 TEXT,
-    owner_key_prefix      TEXT,
-    invite_code           TEXT,
-    invite_code_expires_at TEXT,
-    created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+    id                      TEXT PRIMARY KEY,
+    name                    TEXT NOT NULL,
+    owner                   TEXT,
+    owner_key_prefix        TEXT,
+    invite_code             TEXT,
+    invite_code_expires_at  TEXT,
+    custom_rule_set         INTEGER NOT NULL DEFAULT 0,
+    created_at              TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS org_owners (
@@ -53,23 +61,29 @@ CREATE TABLE IF NOT EXISTS org_owners (
 );
 
 CREATE TABLE IF NOT EXISTS rules (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    category    TEXT NOT NULL DEFAULT 'general',
-    pattern     TEXT NOT NULL,
-    flags       TEXT NOT NULL DEFAULT '',
-    strategy    TEXT NOT NULL DEFAULT 'placeholder',
-    placeholder TEXT NOT NULL DEFAULT '[MASKED]',
-    weight      INTEGER NOT NULL DEFAULT 5,
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    is_builtin  INTEGER NOT NULL DEFAULT 0,
-    scope       TEXT    NOT NULL DEFAULT 'private',
-    org_id      TEXT,
-    use_count   INTEGER NOT NULL DEFAULT 0,
-    version     INTEGER NOT NULL DEFAULT 1,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    created_by  TEXT NOT NULL DEFAULT 'system'
+    id                  TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    category            TEXT NOT NULL DEFAULT 'general',
+    pattern             TEXT NOT NULL,
+    flags               TEXT NOT NULL DEFAULT '',
+    strategy            TEXT NOT NULL DEFAULT 'placeholder',
+    placeholder         TEXT NOT NULL DEFAULT '[MASKED]',
+    weight              INTEGER NOT NULL DEFAULT 5,
+    enabled             INTEGER NOT NULL DEFAULT 1,
+    is_builtin          INTEGER NOT NULL DEFAULT 0,
+    scope               TEXT    NOT NULL DEFAULT 'private',
+    org_id              TEXT,
+    use_count           INTEGER NOT NULL DEFAULT 0,
+    version             INTEGER NOT NULL DEFAULT 1,
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by          TEXT NOT NULL DEFAULT 'system',
+    -- columns added in migrations 8/11/13/14 — included here so fresh installs
+    -- get the full schema without needing ALTER TABLE
+    creator_key_prefix  TEXT,
+    description         TEXT,
+    admin_deleted       INTEGER DEFAULT 0,
+    example             TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rule_suggestions (
@@ -113,7 +127,47 @@ CREATE TABLE IF NOT EXISTS api_keys (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     expires_at TEXT
 );
+
+-- ── Indices ──────────────────────────────────────────────────────────────────
+-- Primary filter for list_rules: scope + enabled + admin_deleted
+CREATE INDEX IF NOT EXISTS idx_rules_scope_enabled
+    ON rules (scope, enabled, admin_deleted);
+
+-- Org-scoped rule queries (org_id + scope)
+CREATE INDEX IF NOT EXISTS idx_rules_org_scope
+    ON rules (org_id, scope);
+
+-- Admin operations: find all built-in rules quickly
+CREATE INDEX IF NOT EXISTS idx_rules_builtin
+    ON rules (is_builtin);
+
+-- Rule changelog: fetch history for a specific rule
+CREATE INDEX IF NOT EXISTS idx_changelog_rule_id
+    ON rule_changelog (rule_id, changed_at);
+
+-- Suggestions: filter by status (pending/approved/rejected)
+CREATE INDEX IF NOT EXISTS idx_suggestions_status
+    ON rule_suggestions (status, submitted_at);
 """
+
+
+# ─── Migration helpers ────────────────────────────────────────────────────────
+
+def _migration_applied(conn: sqlite3.Connection, version: int) -> bool:
+    """Return True if migration `version` has already been recorded."""
+    row = conn.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
+    ).fetchone()
+    return row is not None
+
+
+def _mark_migration(conn: sqlite3.Connection, version: int, description: str = "") -> None:
+    """Record that migration `version` has been applied (idempotent)."""
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations (version, description) VALUES (?, ?)",
+        (version, description)
+    )
+    conn.commit()
 
 
 def init_db():
@@ -121,7 +175,10 @@ def init_db():
     conn = _get_conn()
     conn.executescript(_SCHEMA_SQL)
 
-    # ── Migrations (all idempotent) ──────────────────────────────────────────
+    # ── Migrations ───────────────────────────────────────────────────────────
+    # ALTER TABLE steps: guarded by try/except (SQLite raises if column already exists)
+    # Data-modifying steps: guarded by schema_migrations version table (run exactly once)
+
     # 1. Legacy: rename visibility → scope
     try:
         conn.execute("ALTER TABLE rules ADD COLUMN visibility TEXT NOT NULL DEFAULT 'private'")
@@ -131,29 +188,32 @@ def init_db():
     try:
         conn.execute("ALTER TABLE rules ADD COLUMN scope TEXT NOT NULL DEFAULT 'private'")
         conn.commit()
-        logger.info("Migration: added 'scope' column to rules")
+        logger.info("Migration 1: added 'scope' column to rules")
     except Exception:
         pass
-    # Copy visibility → scope if scope is still all 'private' but visibility has data
-    conn.execute("""
-        UPDATE rules SET scope = CASE
-            WHEN is_builtin = 1 THEN 'system'
-            WHEN visibility = 'public' THEN 'org'
-            ELSE 'private'
-        END
-        WHERE scope = 'private' AND visibility IS NOT NULL
-    """)
 
     # 2. Add org_id column
     try:
         conn.execute("ALTER TABLE rules ADD COLUMN org_id TEXT")
         conn.commit()
-        logger.info("Migration: added 'org_id' column to rules")
+        logger.info("Migration 2: added 'org_id' column to rules")
     except Exception:
         pass
-    # system rules → org_id=NULL; former public non-builtin → org_id='default'
-    conn.execute("UPDATE rules SET org_id = NULL WHERE scope = 'system'")
-    conn.execute("UPDATE rules SET org_id = 'default' WHERE scope = 'org' AND org_id IS NULL")
+
+    # 1+2 data backfill: run once
+    if not _migration_applied(conn, 2):
+        conn.execute("""
+            UPDATE rules SET scope = CASE
+                WHEN is_builtin = 1 THEN 'system'
+                WHEN visibility = 'public' THEN 'org'
+                ELSE 'private'
+            END
+            WHERE scope = 'private' AND visibility IS NOT NULL
+        """)
+        conn.execute("UPDATE rules SET org_id = NULL WHERE scope = 'system'")
+        conn.execute("UPDATE rules SET org_id = 'default' WHERE scope = 'org' AND org_id IS NULL")
+        _mark_migration(conn, 2, "scope+org_id backfill")
+        logger.info("Migration 2: backfilled scope and org_id")
 
     # 3. Add use_count column
     try:
@@ -281,23 +341,26 @@ def init_db():
     except Exception:
         pass  # column already exists
 
-    # 15. Disable SUSE-specific built-in rules — they are too product-specific for general use
-    _SUSE_SPECIFIC_IDS = (
-        'bsc_number', 'scc_regcode', 'zypper_repo_url', 'smt_rmt_url',
-        'suse_connect_key', 'autoyast_password', 'autoyast_encrypted',
-        'salt_master_key', 'suma_api_token', 'supportconfig_filename',
-        'zypper_cookie', 'rancher_token', 'rancher_cluster_reg',
-        'corosync_authkey', 'drbd_shared_secret', 'sap_hana_credential',
-        'sap_sid', 'supportconfig_removed', 'identity_tag',
-    )
-    placeholders = ','.join('?' * len(_SUSE_SPECIFIC_IDS))
-    result = conn.execute(
-        f"UPDATE rules SET enabled = 0 WHERE id IN ({placeholders}) AND is_builtin = 1",
-        _SUSE_SPECIFIC_IDS
-    )
-    conn.commit()
-    if result.rowcount > 0:
-        logger.info(f"Migration 15: disabled {result.rowcount} SUSE-specific built-in rules")
+    # 15. Disable SUSE-specific built-in rules — run ONCE only
+    # (guarded by version table: without this guard, every restart would re-disable
+    #  any SUSE rule the admin had manually re-enabled)
+    if not _migration_applied(conn, 15):
+        _SUSE_SPECIFIC_IDS = (
+            'bsc_number', 'scc_regcode', 'zypper_repo_url', 'smt_rmt_url',
+            'suse_connect_key', 'autoyast_password', 'autoyast_encrypted',
+            'salt_master_key', 'suma_api_token', 'supportconfig_filename',
+            'zypper_cookie', 'rancher_token', 'rancher_cluster_reg',
+            'corosync_authkey', 'drbd_shared_secret', 'sap_hana_credential',
+            'sap_sid', 'supportconfig_removed', 'identity_tag',
+        )
+        placeholders = ','.join('?' * len(_SUSE_SPECIFIC_IDS))
+        result = conn.execute(
+            f"UPDATE rules SET enabled = 0 WHERE id IN ({placeholders}) AND is_builtin = 1",
+            _SUSE_SPECIFIC_IDS
+        )
+        conn.commit()
+        _mark_migration(conn, 15, "disable SUSE-specific built-in rules")
+        logger.info(f"Migration 15: disabled {result.rowcount} SUSE-specific built-in rules (will not re-run)")
 
     logger.info(f"Rules database initialized at {DB_PATH}")
 
