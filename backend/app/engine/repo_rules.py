@@ -1280,9 +1280,14 @@ def list_suggestions(
 def review_suggestion(
     suggestion_id: int,
     action: str,
-    reviewed_by: str = "admin"
+    reviewed_by: str = "admin",
+    org_id: Optional[str] = None,
 ) -> dict:
-    """Approve or reject a suggestion. If approved, applies the rule change."""
+    """Approve or reject a suggestion. If approved, applies the rule change.
+
+    org_id: when provided (org owner review), create-type suggestions will
+    have the new rule scoped to this org.
+    """
     suggestion = get_suggestion(suggestion_id)
     if not suggestion:
         raise ValueError(f"Suggestion {suggestion_id} not found")
@@ -1293,7 +1298,7 @@ def review_suggestion(
     now = datetime.now(timezone.utc).isoformat()
 
     if action == "approve":
-        _apply_suggestion(suggestion, reviewed_by)
+        _apply_suggestion(suggestion, reviewed_by, org_id=org_id)
         conn.execute(
             "UPDATE rule_suggestions SET status='approved', reviewed_by=?, reviewed_at=? WHERE id=?",
             (reviewed_by, now, suggestion_id)
@@ -1310,10 +1315,13 @@ def review_suggestion(
     return get_suggestion(suggestion_id)
 
 
-def _apply_suggestion(suggestion: dict, reviewed_by: str):
-    """Apply an approved suggestion to the rules table."""
+def _apply_suggestion(suggestion: dict, reviewed_by: str, org_id: Optional[str] = None):
+    """Apply an approved suggestion to the rules table.
+
+    org_id: when set, create-type rules are scoped to this org instead of system.
+    """
     if suggestion["action"] == "create":
-        create_rule({
+        rule_data: dict = {
             "id": suggestion.get("rule_id") or f"custom_{suggestion['id']}",
             "name": suggestion["name"] or "Unnamed Rule",
             "category": suggestion.get("category") or "custom",
@@ -1323,7 +1331,11 @@ def _apply_suggestion(suggestion: dict, reviewed_by: str):
             "placeholder": suggestion.get("placeholder") or "[MASKED]",
             "weight": suggestion.get("weight") or 5,
             "enabled": True,
-        }, created_by=reviewed_by)
+        }
+        if org_id:
+            rule_data["scope"] = "org"
+            rule_data["org_id"] = org_id
+        create_rule(rule_data, created_by=reviewed_by)
     elif suggestion["action"] == "modify" and suggestion["rule_id"]:
         update_data = {}
         for key in ("name", "category", "pattern", "flags", "strategy", "placeholder", "weight"):

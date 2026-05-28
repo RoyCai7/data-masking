@@ -210,9 +210,12 @@ class RuleService:
     def get_suggestion(self, suggestion_id: int) -> Optional[dict]:
         return repo_get_suggestion(suggestion_id)
 
-    def review_suggestion(self, suggestion_id: int, action: str, reviewed_by: str = "admin") -> dict:
-        """Approve/reject → if approved, DB is mutated → invalidate cache."""
-        result = repo_review_suggestion(suggestion_id, action, reviewed_by)
+    def review_suggestion(self, suggestion_id: int, action: str, reviewed_by: str = "admin", org_id: Optional[str] = None) -> dict:
+        """Approve/reject → if approved, DB is mutated → invalidate cache.
+
+        org_id: when set (org owner review), create-type suggestions produce an org-scoped rule.
+        """
+        result = repo_review_suggestion(suggestion_id, action=action, reviewed_by=reviewed_by, org_id=org_id)
         if action == "approve":
             self._invalidate()
         return result

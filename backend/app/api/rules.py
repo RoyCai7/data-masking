@@ -265,26 +265,31 @@ async def review_suggestion(suggestion_id: int, body: SuggestionReview, request:
     """
     from app.core.auth import AUTH_ENABLED
     ctx = _get_auth_context(request)
+    reviewer_org_id: Optional[str] = None
 
     if AUTH_ENABLED and ctx["role"] != "admin":
-        # Org owner: verify the suggestion's target rule belongs to their org
-        suggestion = rule_service.get_suggestion(suggestion_id)
-        if not suggestion:
-            raise HTTPException(status_code=404, detail=f"Suggestion {suggestion_id} not found")
-        target_rule_id = suggestion.get("rule_id")
-        if not target_rule_id:
-            raise HTTPException(status_code=403, detail="Only admins can review suggestions for new rules")
-        target_rule = rule_service.get_rule_detail(target_rule_id)
-        if not target_rule or target_rule.get("org_id") != ctx.get("org_id"):
-            raise HTTPException(status_code=403, detail="You can only review suggestions for rules in your org")
-        if not _is_org_owner_check(ctx["org_id"], ctx["key_prefix"]):
+        org_id = ctx.get("org_id")
+        if not org_id or not _is_org_owner_check(org_id, ctx["key_prefix"]):
             raise HTTPException(status_code=403, detail="Org owner role required to review suggestions")
+        # Fetch suggestion to verify org ownership
+        suggestion_obj = rule_service.get_suggestion(suggestion_id)
+        if not suggestion_obj:
+            raise HTTPException(status_code=404, detail=f"Suggestion {suggestion_id} not found")
+        target_rule_id = suggestion_obj.get("rule_id")
+        if target_rule_id:
+            # modify/disable: rule must belong to this org
+            target_rule = rule_service.get_rule_detail(target_rule_id)
+            if not target_rule or target_rule.get("org_id") != org_id:
+                raise HTTPException(status_code=403, detail="You can only review suggestions for rules in your org")
+        # create-type (no rule_id): allow org owner; created rule will be org-scoped
+        reviewer_org_id = org_id
 
     try:
         suggestion = rule_service.review_suggestion(
             suggestion_id,
             action=body.action,
             reviewed_by=_get_user_name(request),
+            org_id=reviewer_org_id,
         )
         return {"message": f"Suggestion {body.action}d", "suggestion": suggestion}
     except ValueError as e:
