@@ -142,6 +142,7 @@ async def mask_file(
     caller_org_id = (auth_user.get('org_id') or 'default') if auth_user else 'default'
     caller_name = auth_user.get('name') if auth_user else None
     caller_role = auth_user.get('role', 'user') if auth_user else 'user'
+    caller_key_prefix = auth_user.get('key_prefix') if auth_user else None
 
     # Add background task for processing
     background_tasks.add_task(
@@ -156,6 +157,7 @@ async def mask_file(
         caller_org_id=caller_org_id,
         caller_name=caller_name,
         caller_role=caller_role,
+        caller_key_prefix=caller_key_prefix,
     )
     
     return MaskResponse(
@@ -178,6 +180,7 @@ async def process_masking_task(
     caller_org_id: str = 'default',
     caller_name: Optional[str] = None,
     caller_role: str = 'user',
+    caller_key_prefix: Optional[str] = None,
 ):
     """Background task to process masking (supports both files and archives)"""
     try:
@@ -191,10 +194,12 @@ async def process_masking_task(
             update_task(session_id, task_id, progress=progress)
 
         # Load rules for this caller's org context (system + org + private)
+        # Private rules matched by creator_key_prefix for security (name alone is not unique)
         rules = rule_service.get_enabled_rules_for(
             org_id=caller_org_id,
             owner=caller_name,
             role=caller_role,
+            key_prefix=caller_key_prefix,
         )
 
         # Run masking (supports both regular files and archives)

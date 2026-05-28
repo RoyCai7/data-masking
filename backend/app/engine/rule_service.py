@@ -144,17 +144,20 @@ class RuleService:
         org_id: str = 'default',
         owner: Optional[str] = None,
         role: str = 'user',
+        key_prefix: Optional[str] = None,
     ) -> List[MaskingRule]:
         """
         Load rules from DB for a specific caller context (org + user).
         Used by the masking endpoint to apply the correct rule set per request.
         Returns system rules + org rules + caller's private rules (enabled only).
+        Private rules matched by creator_key_prefix when key_prefix is provided.
         """
         rows = repo_list_rules(
             enabled_only=True,
             org_id=org_id,
             owner=owner,
             role=role,
+            key_prefix=key_prefix,
         )
         rules = []
         for row in rows:
@@ -281,9 +284,10 @@ class RuleService:
         owner: Optional[str] = None,
         org_id: Optional[str] = None,
         role: str = "user",
+        key_prefix: Optional[str] = None,
     ) -> List[dict]:
         """Full DB rows for listing, scope-aware."""
-        return repo_list_rules(category, enabled_only, owner=owner, org_id=org_id, role=role)
+        return repo_list_rules(category, enabled_only, owner=owner, org_id=org_id, role=role, key_prefix=key_prefix)
 
     # ─── Organizations ──────────────────────────────────────────────────
 

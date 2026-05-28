@@ -201,6 +201,7 @@ async def list_rules(
         owner=ctx["name"] if ctx["role"] != "admin" else None,
         org_id=ctx["org_id"] if ctx["role"] != "admin" else None,
         role=ctx["role"],
+        key_prefix=ctx["key_prefix"] if ctx["role"] != "admin" else None,
     )
 
     if scope:

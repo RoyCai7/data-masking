@@ -1142,6 +1142,7 @@ def list_rules(
     owner: Optional[str] = None,
     org_id: Optional[str] = None,
     role: str = "user",
+    key_prefix: Optional[str] = None,
 ) -> List[dict]:
     """
     List rules with scope-aware filtering.
@@ -1150,6 +1151,8 @@ def list_rules(
     - user with custom ruleset: sees only org rules + own private rules (no system rules)
     - user without custom ruleset: sees system rules + org rules + own private rules
     - anonymous: sees only system rules
+
+    Private rules are matched by creator_key_prefix (not name) when key_prefix is provided.
     """
     conn = _get_conn()
     sql = "SELECT * FROM rules WHERE 1=1 AND (admin_deleted IS NULL OR admin_deleted = 0)"
@@ -1170,11 +1173,28 @@ def list_rules(
             ).fetchone()
             custom_rule_set = bool(row and row["custom_rule_set"])
 
+        # Private rule filter:
+        # - New rules: matched by creator_key_prefix (precise, key-level)
+        # - Legacy rules (creator_key_prefix IS NULL): fall back to created_by = name
+        # Both conditions are OR'd so migrated and unmigrated rules both work.
+        if key_prefix and owner:
+            private_clause = "(scope = 'private' AND (creator_key_prefix = ? OR (creator_key_prefix IS NULL AND created_by = ?)))"
+            private_param = [key_prefix, owner]
+        elif key_prefix:
+            private_clause = "(scope = 'private' AND creator_key_prefix = ?)"
+            private_param = [key_prefix]
+        elif owner:
+            private_clause = "(scope = 'private' AND created_by = ?)"
+            private_param = [owner]
+        else:
+            private_clause = None
+            private_param = []
+
         if custom_rule_set:
             # Org has forked system rules → show only org + private, never system
-            if owner and org_id:
-                sql += " AND ((scope = 'org' AND org_id = ?) OR (scope = 'private' AND created_by = ?))"
-                params.extend([org_id, owner])
+            if private_clause and org_id:
+                sql += f" AND ((scope = 'org' AND org_id = ?) OR {private_clause})"
+                params.extend([org_id] + private_param)
             elif org_id:
                 sql += " AND (scope = 'org' AND org_id = ?)"
                 params.append(org_id)
@@ -1182,9 +1202,12 @@ def list_rules(
                 sql += " AND 1=0"  # no rules — should not happen
         else:
             # Standard: system + org + private
-            if owner and org_id:
-                sql += " AND (scope = 'system' OR (scope = 'org' AND org_id = ?) OR (scope = 'private' AND created_by = ?))"
-                params.extend([org_id, owner])
+            if private_clause and org_id:
+                sql += f" AND (scope = 'system' OR (scope = 'org' AND org_id = ?) OR {private_clause})"
+                params.extend([org_id] + private_param)
+            elif private_clause:
+                sql += f" AND (scope = 'system' OR {private_clause})"
+                params.extend(private_param)
             elif org_id:
                 sql += " AND (scope = 'system' OR (scope = 'org' AND org_id = ?))"
                 params.append(org_id)
@@ -1202,10 +1225,11 @@ def list_rules_detailed(
     owner: Optional[str] = None,
     org_id: Optional[str] = None,
     role: str = "user",
+    key_prefix: Optional[str] = None,
 ) -> List[dict]:
     """Alias for list_rules — returns same data (all columns)."""
     return list_rules(category=category, enabled_only=enabled_only,
-                      owner=owner, org_id=org_id, role=role)
+                      owner=owner, org_id=org_id, role=role, key_prefix=key_prefix)
 
 
 def get_rule(rule_id: str) -> Optional[dict]:
