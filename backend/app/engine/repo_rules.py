@@ -935,7 +935,8 @@ def list_rules(
     List rules with scope-aware filtering.
 
     - admin: sees all rules
-    - user: sees system rules + org's org-scoped rules + own private rules
+    - user with custom ruleset: sees only org rules + own private rules (no system rules)
+    - user without custom ruleset: sees system rules + org rules + own private rules
     - anonymous: sees only system rules
     """
     conn = _get_conn()
@@ -949,14 +950,34 @@ def list_rules(
         sql += " AND enabled = 1"
 
     if role != "admin":
-        if owner and org_id:
-            sql += " AND (scope = 'system' OR (scope = 'org' AND org_id = ?) OR (scope = 'private' AND created_by = ?))"
-            params.extend([org_id, owner])
-        elif org_id:
-            sql += " AND (scope = 'system' OR (scope = 'org' AND org_id = ?))"
-            params.append(org_id)
+        # Check if org has a custom (forked) rule set — if so, skip system rules
+        custom_rule_set = False
+        if org_id:
+            row = conn.execute(
+                "SELECT custom_rule_set FROM organizations WHERE id = ?", (org_id,)
+            ).fetchone()
+            custom_rule_set = bool(row and row["custom_rule_set"])
+
+        if custom_rule_set:
+            # Org has forked system rules → show only org + private, never system
+            if owner and org_id:
+                sql += " AND ((scope = 'org' AND org_id = ?) OR (scope = 'private' AND created_by = ?))"
+                params.extend([org_id, owner])
+            elif org_id:
+                sql += " AND (scope = 'org' AND org_id = ?)"
+                params.append(org_id)
+            else:
+                sql += " AND 1=0"  # no rules — should not happen
         else:
-            sql += " AND scope = 'system'"
+            # Standard: system + org + private
+            if owner and org_id:
+                sql += " AND (scope = 'system' OR (scope = 'org' AND org_id = ?) OR (scope = 'private' AND created_by = ?))"
+                params.extend([org_id, owner])
+            elif org_id:
+                sql += " AND (scope = 'system' OR (scope = 'org' AND org_id = ?))"
+                params.append(org_id)
+            else:
+                sql += " AND scope = 'system'"
 
     sql += " ORDER BY scope, category, weight DESC, id"
     rows = conn.execute(sql, params).fetchall()
@@ -1314,6 +1335,50 @@ def _apply_suggestion(suggestion: dict, reviewed_by: str):
         rule = get_rule(suggestion["rule_id"])
         if rule and rule["enabled"]:
             toggle_rule(suggestion["rule_id"], changed_by=reviewed_by)
+
+
+# ─── Fork System Rules ────────────────────────────────────────────────────────
+
+def fork_system_rules(org_id: str, forked_by: str = "system") -> int:
+    """Copy all enabled system rules into org scope for the given org.
+
+    Each copy gets id = '<org_id>__<original_id>' to avoid collision.
+    Already-forked rules (id already exists) are skipped.
+    After calling this, set_custom_rule_set(org_id) should be called to
+    signal that this org no longer inherits from system.
+    Returns the number of newly copied rules.
+    """
+    conn = _get_conn()
+    system_rules = conn.execute(
+        "SELECT * FROM rules WHERE scope = 'system' AND enabled = 1"
+    ).fetchall()
+
+    copied = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for row in system_rules:
+        r = dict(row)
+        new_id = f"{org_id}__{r['id']}"
+        existing = conn.execute("SELECT id FROM rules WHERE id = ?", (new_id,)).fetchone()
+        if existing:
+            continue
+        conn.execute(
+            """
+            INSERT INTO rules
+                (id, name, category, pattern, flags, strategy, placeholder, weight,
+                 enabled, is_builtin, scope, org_id, created_at, updated_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'org', ?, ?, ?, ?)
+            """,
+            (
+                new_id, r["name"], r["category"], r["pattern"],
+                r.get("flags", ""), r["strategy"], r["placeholder"], r["weight"],
+                r["enabled"], org_id, now, now, forked_by,
+            ),
+        )
+        copied += 1
+
+    if copied > 0:
+        conn.commit()
+    return copied
 
 
 # ─── Import / Export ───────────────────────────────────────────────────────────

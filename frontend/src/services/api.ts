@@ -136,6 +136,7 @@ export interface Organization {
   owner_key_prefix?: string;
   invite_code?: string;
   invite_code_expires_at?: string;
+  custom_rule_set?: boolean;
   created_at?: string;
 }
 
@@ -498,5 +499,10 @@ export const generateRegex = async (
   options?: { signal?: AbortSignal },
 ): Promise<GenerateRegexResponse> => {
   const response = await api.post('/llm/generate-regex', payload, { signal: options?.signal });
+  return response.data;
+};
+
+export const forkSystemRules = async (): Promise<{ message: string; copied: number; org_id: string }> => {
+  const response = await api.post('/rules/fork-system');
   return response.data;
 };

@@ -219,6 +219,14 @@ def init_db():
     conn.commit()
     logger.info("Migration 9: org_owners table ready")
 
+    # 10. Add custom_rule_set flag to organizations
+    try:
+        conn.execute("ALTER TABLE organizations ADD COLUMN custom_rule_set INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Migration 10: added 'custom_rule_set' column to organizations")
+    except Exception:
+        pass
+
     logger.info(f"Rules database initialized at {DB_PATH}")
 
 

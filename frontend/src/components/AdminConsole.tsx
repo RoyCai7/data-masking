@@ -39,6 +39,8 @@ import {
   promoteRule,
   updateRule,
   revealApiKey,
+  forkSystemRules,
+  getMyOrg,
 } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useAiRegex } from '../hooks/useAiRegex';
@@ -94,6 +96,8 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const [ruleForm, setRuleForm] = useState<RuleDetail>(emptyRule);
   const [isEditingRule, setIsEditingRule] = useState(false);
   const [importText, setImportText] = useState('');
+  const [orgCustomRuleSet, setOrgCustomRuleSet] = useState<boolean | null>(null);
+  const [isForkingRules, setIsForkingRules] = useState(false);
 
 
   const [suggestionStatus, setSuggestionStatus] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
@@ -140,6 +144,28 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     const response = await getRulesDetailed();
     setRules(response.rules || []);
   }, []);
+
+  const loadOrgCustomRuleSet = useCallback(async () => {
+    try {
+      const org = await getMyOrg();
+      setOrgCustomRuleSet(!!org.custom_rule_set);
+    } catch {
+      setOrgCustomRuleSet(null);
+    }
+  }, []);
+
+  const handleForkSystemRules = async () => {
+    if (!window.confirm('Fork all system rules to your org? After forking, your org rules are independent from system rules.')) return;
+    setIsForkingRules(true);
+    setError(null);
+    try {
+      const result = await forkSystemRules();
+      showMessage(result.message);
+      setOrgCustomRuleSet(true);
+      await loadRules();
+    } catch (err) { handleError(err, 'Failed to fork system rules'); }
+    finally { setIsForkingRules(false); }
+  };
 
   const loadSuggestions = useCallback(async () => {
     const response = await listRuleSuggestions(suggestionStatus === 'all' ? undefined : suggestionStatus);
@@ -213,7 +239,10 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
         }
         setIsAdmin(admin);
         // org owner starts on rules tab; admin can see keys tab
-        if (!admin && orgOwner) setActiveTab('rules');
+        if (!admin && orgOwner) {
+          setActiveTab('rules');
+          loadOrgCustomRuleSet();
+        }
         setIsReady(true);
         if (admin) await Promise.all([loadKeys(), loadOrgs()]);
       } catch (err) {
@@ -224,7 +253,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
     };
 
     bootstrap();
-  }, [loadKeys]);
+  }, [loadKeys, loadOrgCustomRuleSet]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -769,6 +798,26 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                 </div>
               </div>
               <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                {!isAdmin && orgCustomRuleSet === false && (
+                  <div className="mx-5 mt-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Your org is currently using system rules</p>
+                      <p className="text-xs text-amber-600 mt-0.5">Fork to get an independent copy you can freely edit, enable/disable, and delete. System rules remain unchanged.</p>
+                    </div>
+                    <button
+                      onClick={handleForkSystemRules}
+                      disabled={isForkingRules}
+                      className="shrink-0 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+                    >
+                      {isForkingRules ? 'Forking…' : '🔀 Fork System Rules'}
+                    </button>
+                  </div>
+                )}
+                {!isAdmin && orgCustomRuleSet === true && (
+                  <div className="mx-5 mt-4 px-4 py-2 rounded-xl border border-green-200 bg-green-50">
+                    <p className="text-xs text-green-700">✅ Your org has an independent rule set. System rules are not mixed in.</p>
+                  </div>
+                )}
                 <div className="px-5 py-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <h3 className="font-semibold text-gray-900">Rules</h3>
                   <input value={ruleFilter} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleFilter(e.target.value)} placeholder="Filter by id, name, category, pattern" className="w-full md:w-80 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />

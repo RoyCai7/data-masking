@@ -117,6 +117,17 @@ def get_org_by_invite_code(code: str) -> Optional[dict]:
     return org
 
 
+def set_custom_rule_set(org_id: str, enabled: bool = True) -> None:
+    """Mark an org as having a custom (forked) rule set.
+    When True, the masking engine no longer injects system rules for this org."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE organizations SET custom_rule_set = ? WHERE id = ?",
+        (1 if enabled else 0, org_id)
+    )
+    conn.commit()
+
+
 def delete_org(org_id: str) -> bool:
     """Delete an org. Cannot delete 'default'.
     All keys belonging to this org are moved back to 'default'."""

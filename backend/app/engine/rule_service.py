@@ -42,6 +42,7 @@ from app.engine.repository import (
     get_org_by_invite_code as repo_get_org_by_invite_code,
     export_rules as repo_export_rules,
     import_rules as repo_import_rules,
+    fork_system_rules as repo_fork_system_rules,
     create_suggestion as repo_create_suggestion,
     list_suggestions as repo_list_suggestions,
     get_suggestion as repo_get_suggestion,
@@ -220,6 +221,14 @@ class RuleService:
 
     def export_rules(self, org_id: Optional[str] = None) -> List[dict]:
         return repo_export_rules(org_id=org_id)
+
+    def fork_system_rules(self, org_id: str, forked_by: str = "system") -> int:
+        """Copy all enabled system rules to org scope, then mark org as custom rule set."""
+        from app.engine.repo_orgs import set_custom_rule_set
+        count = repo_fork_system_rules(org_id, forked_by=forked_by)
+        set_custom_rule_set(org_id, enabled=True)
+        self._invalidate()
+        return count
 
     def import_rules(self, rules_data: List[dict], imported_by: str = "admin") -> dict:
         result = repo_import_rules(rules_data, imported_by)

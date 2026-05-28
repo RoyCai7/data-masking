@@ -556,3 +556,28 @@ async def import_rules(request: Request):
         "message": f"Import complete: {result['created']} created, {result['updated']} updated",
         **result,
     }
+
+
+@router.post("/rules/fork-system", summary="Fork system rules to org", status_code=200)
+async def fork_system_rules(request: Request):
+    """
+    Copy all enabled system rules into the caller's org as independent org-scoped copies.
+    After forking, the org's rule set is decoupled from system rules:
+    - Org rules can be freely edited/deleted/disabled by the org owner.
+    - System rules remain unchanged.
+    - The org no longer inherits new system rules automatically.
+    Idempotent: re-calling only copies rules not yet forked.
+    Requires org owner or admin role.
+    """
+    ctx = _get_auth_context(request)
+    org_id = ctx.get("org_id")
+    _require_admin_or_org_owner(request, org_id=org_id)
+    if not org_id:
+        raise HTTPException(status_code=400, detail="No org associated with this key")
+
+    count = rule_service.fork_system_rules(org_id, forked_by=_get_user_name(request))
+    return {
+        "message": f"Forked {count} system rules to org '{org_id}'. Your org now has an independent rule set.",
+        "org_id": org_id,
+        "copied": count,
+    }
