@@ -12,7 +12,7 @@ import shutil
 from typing import Optional, List
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, BackgroundTasks, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -27,6 +27,7 @@ from app.core.session import (
 from app.core.executor import acquire_slot, release_slot
 from app.engine.masker import get_engine
 from app.engine.rules import get_rules_info
+from app.engine.rule_service import rule_service
 from app.engine.archive import detect_archive_type, ArchiveType
 
 import logging
@@ -67,6 +68,7 @@ class TaskStatusResponse(BaseModel):
 @router.post("/mask", response_model=MaskResponse, summary="Upload and mask a file")
 async def mask_file(
     background_tasks: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(..., description="File to mask"),
     whitelist: Optional[str] = Form(default="", description="Comma-separated whitelist"),
     x_session_id: Optional[str] = Header(default=None, alias="X-Session-ID", description="Session ID")
@@ -134,7 +136,13 @@ async def mask_file(
     
     # Parse whitelist
     whitelist_items = [w.strip() for w in whitelist.split(',') if w.strip()]
-    
+
+    # Extract org context from authenticated user (if any)
+    auth_user = getattr(request.state, 'auth_user', None)
+    caller_org_id = (auth_user.get('org_id') or 'default') if auth_user else 'default'
+    caller_name = auth_user.get('name') if auth_user else None
+    caller_role = auth_user.get('role', 'user') if auth_user else 'user'
+
     # Add background task for processing
     background_tasks.add_task(
         process_masking_task,
@@ -144,7 +152,10 @@ async def mask_file(
         filename=file.filename,
         whitelist=whitelist_items,
         storage_path=session.storage_path,
-        is_archive=is_archive
+        is_archive=is_archive,
+        caller_org_id=caller_org_id,
+        caller_name=caller_name,
+        caller_role=caller_role,
     )
     
     return MaskResponse(
@@ -163,26 +174,37 @@ async def process_masking_task(
     filename: str,
     whitelist: List[str],
     storage_path: Path,
-    is_archive: bool = False
+    is_archive: bool = False,
+    caller_org_id: str = 'default',
+    caller_name: Optional[str] = None,
+    caller_role: str = 'user',
 ):
     """Background task to process masking (supports both files and archives)"""
     try:
         # Acquire processing slot
         await acquire_slot()
-        
+
         update_task(session_id, task_id, status="processing", progress=0)
-        
+
         # Progress callback
         def on_progress(progress: int):
             update_task(session_id, task_id, progress=progress)
-        
+
+        # Load rules for this caller's org context (system + org + private)
+        rules = rule_service.get_enabled_rules_for(
+            org_id=caller_org_id,
+            owner=caller_name,
+            role=caller_role,
+        )
+
         # Run masking (supports both regular files and archives)
         engine = get_engine()
         result = await engine.mask_file(
             file_path=file_path,
             output_dir=str(storage_path),
             whitelist=whitelist,
-            progress_callback=on_progress
+            progress_callback=on_progress,
+            rules=rules,
         )
         
         # Get the masked file path

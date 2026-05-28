@@ -135,9 +135,34 @@ class RuleService:
             return list(self._cache)
 
     def get_enabled_rules(self) -> List[MaskingRule]:
-        """Only enabled rules, from cache. Used by masker.py."""
+        """Only enabled rules, from cache. Used by masker.py when no org context."""
         with self._lock:
             return [r for r in self._cache if r.enabled]
+
+    def get_enabled_rules_for(
+        self,
+        org_id: str = 'default',
+        owner: Optional[str] = None,
+        role: str = 'user',
+    ) -> List[MaskingRule]:
+        """
+        Load rules from DB for a specific caller context (org + user).
+        Used by the masking endpoint to apply the correct rule set per request.
+        Returns system rules + org rules + caller's private rules (enabled only).
+        """
+        rows = repo_list_rules(
+            enabled_only=True,
+            org_id=org_id,
+            owner=owner,
+            role=role,
+        )
+        rules = []
+        for row in rows:
+            try:
+                rules.append(_db_row_to_masking_rule(row))
+            except Exception as e:
+                logger.warning(f"Skipping invalid rule '{row.get('id')}': {e}")
+        return rules
 
     def get_rule_by_id(self, rule_id: str) -> Optional[MaskingRule]:
         """Get a single rule from cache."""
