@@ -1220,19 +1220,38 @@ def get_suggestion(suggestion_id: int) -> Optional[dict]:
 
 def list_suggestions(
     status: Optional[str] = None,
-    submitted_by: Optional[str] = None
+    submitted_by: Optional[str] = None,
+    org_id: Optional[str] = None,
 ) -> List[dict]:
-    """List suggestions with optional filters."""
+    """List suggestions with optional filters.
+
+    org_id: when set, also includes suggestions that target rules belonging
+    to that org (in addition to any submitted_by filter).
+    """
     conn = _get_conn()
-    sql = "SELECT * FROM rule_suggestions WHERE 1=1"
+    if org_id:
+        # Include suggestions submitted by this user OR targeting rules in this org
+        sql = (
+            "SELECT DISTINCT s.* FROM rule_suggestions s "
+            "LEFT JOIN rules r ON s.rule_id = r.id "
+            "WHERE 1=1"
+        )
+    else:
+        sql = "SELECT * FROM rule_suggestions WHERE 1=1"
     params: list = []
     if status:
-        sql += " AND status = ?"
+        sql += " AND s.status = ?" if org_id else " AND status = ?"
         params.append(status)
-    if submitted_by:
+    if submitted_by and org_id:
+        sql += " AND (s.submitted_by = ? OR r.org_id = ?)"
+        params.extend([submitted_by, org_id])
+    elif submitted_by:
         sql += " AND submitted_by = ?"
         params.append(submitted_by)
-    sql += " ORDER BY submitted_at DESC"
+    elif org_id:
+        sql += " AND r.org_id = ?"
+        params.append(org_id)
+    sql += " ORDER BY s.submitted_at DESC" if org_id else " ORDER BY submitted_at DESC"
     rows = conn.execute(sql, params).fetchall()
     return [_row_to_dict(r) for r in rows]
 
@@ -1299,8 +1318,14 @@ def _apply_suggestion(suggestion: dict, reviewed_by: str):
 
 # ─── Import / Export ───────────────────────────────────────────────────────────
 
-def export_rules() -> List[dict]:
-    """Export all rules as a plain list of dicts (for JSON download)."""
+def export_rules(org_id: Optional[str] = None) -> List[dict]:
+    """Export rules as a plain list of dicts (for JSON download).
+
+    org_id: when set, exports only rules belonging to that org.
+    Otherwise exports all rules (admin use).
+    """
+    if org_id:
+        return list_rules(enabled_only=False, org_id=org_id, role="org_owner")
     return list_rules()
 
 
@@ -1336,14 +1361,32 @@ def import_rules(rules_data: List[dict], imported_by: str = "admin") -> dict:
 
 # ─── Changelog ─────────────────────────────────────────────────────────────────
 
-def list_changelog(rule_id: Optional[str] = None, limit: int = 50) -> List[dict]:
-    """List recent changelog entries."""
+def list_changelog(
+    rule_id: Optional[str] = None,
+    limit: int = 50,
+    org_id: Optional[str] = None,
+) -> List[dict]:
+    """List recent changelog entries.
+
+    org_id: when set, restricts results to changes on rules belonging to that org.
+    """
     conn = _get_conn()
-    sql = "SELECT * FROM rule_changelog"
-    params: list = []
-    if rule_id:
-        sql += " WHERE rule_id = ?"
-        params.append(rule_id)
+    if org_id:
+        sql = (
+            "SELECT c.* FROM rule_changelog c "
+            "JOIN rules r ON c.rule_id = r.id "
+            "WHERE r.org_id = ?"
+        )
+        params: list = [org_id]
+        if rule_id:
+            sql += " AND c.rule_id = ?"
+            params.append(rule_id)
+    else:
+        sql = "SELECT * FROM rule_changelog"
+        params = []
+        if rule_id:
+            sql += " WHERE rule_id = ?"
+            params.append(rule_id)
     sql += " ORDER BY changed_at DESC LIMIT ?"
     params.append(limit)
     rows = conn.execute(sql, params).fetchall()

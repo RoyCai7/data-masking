@@ -120,13 +120,17 @@ async def reveal_api_key(key_id: int, request: Request):
 async def get_my_key(request: Request):
     """Get the current user's key information (any authenticated user)."""
     auth_user = require_auth(request)
+    from app.engine.repository import is_org_owner
+    org_id = auth_user.get("org_id") or "default"
+    key_prefix = auth_user.get("key_prefix", "")
     return {
         "name": auth_user.get("name"),
         "role": auth_user.get("role", "user"),
-        "org_id": auth_user.get("org_id", "default"),
+        "org_id": org_id,
+        "is_org_owner": is_org_owner(org_id, key_prefix),
         "created_at": auth_user.get("created_at"),
         "expires_at": auth_user.get("expires_at"),
-        "key_preview": auth_user.get("key_prefix", "") + "...",
+        "key_preview": key_prefix + "...",
     }
 
 

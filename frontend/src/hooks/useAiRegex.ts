@@ -174,7 +174,7 @@ export function useAiRegex({ onApply, onSuccess }: UseAiRegexOptions): UseAiRege
         },
         { signal: controller.signal },
       );
-      setAiResult({ pattern: res.pattern, explanation: res.explanation, provider: res.provider, model: res.model, raw_response: res.raw_response, suggested_name: res.suggested_name, suggested_category: res.suggested_category });
+      setAiResult(res);
     } catch (err: unknown) {
       if (axios.isCancel(err)) return; // panel was closed — silently discard
       setAiError(errorMessage(err, 'Generation failed'));

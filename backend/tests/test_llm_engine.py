@@ -3,7 +3,7 @@ Unit tests for the LLM API module (llm.py).
 
 Covers:
 - _extract_regex:  fenced block, inline backtick, bare line, fallback
-- _extract_explanation: presence / absence of explanation after code fence
+- _extract_rule_json: structured JSON parsing, fallback on invalid input
 - Provider registry: dispatch, unknown provider → 400
 - OllamaBackend.generate: success, ConnectError → 503, HTTP error → 502
 - OpenAICompatBackend.generate: success, malformed response → 502
@@ -27,7 +27,7 @@ from app.api.llm import (
     OllamaBackend,
     OpenAICompatBackend,
     _REGISTRY,
-    _extract_explanation,
+    _extract_rule_json,
     _extract_regex,
     startup,
     shutdown,
@@ -85,20 +85,46 @@ class TestExtractRegex:
 
 
 # =============================================================================
-# _extract_explanation
+# _extract_rule_json
 # =============================================================================
 
-class TestExtractExplanation:
-    def test_explanation_after_fence(self):
-        text = "```\n\\d+\n```\nMatches one or more digits."
-        assert _extract_explanation(text) == "Matches one or more digits."
+class TestExtractRuleJson:
+    _VALID_JSON = (
+        '{"pattern": "\\\\d{4}", "flags": "", "description": "Matches 4 digits.", '
+        '"placeholder": "[NUM]", "weight": 7, '
+        '"examples": {"match": ["1234", "5678"], "no_match": ["abc", "12"]}}'
+    )
 
-    def test_no_fence_returns_none(self):
-        assert _extract_explanation(r"\d+") is None
+    def test_fenced_json_block(self):
+        text = f"```json\n{self._VALID_JSON}\n```"
+        result = _extract_rule_json(text)
+        assert result is not None
+        assert result["pattern"] == r"\d{4}"
+        assert result["description"] == "Matches 4 digits."
+        assert result["placeholder"] == "[NUM]"
+        assert result["weight"] == 7
+        assert result["examples"]["match"] == ["1234", "5678"]
 
-    def test_empty_after_fence_returns_none(self):
-        text = "```\n\\d+\n```\n   "
-        assert _extract_explanation(text) is None
+    def test_bare_json_no_fence(self):
+        result = _extract_rule_json(self._VALID_JSON)
+        assert result is not None
+        assert result["pattern"] == r"\d{4}"
+
+    def test_missing_pattern_returns_none(self):
+        bad = '{"flags": "", "description": "no pattern here"}'
+        assert _extract_rule_json(bad) is None
+
+    def test_invalid_json_returns_none(self):
+        assert _extract_rule_json("not json at all") is None
+        assert _extract_rule_json("") is None
+
+    def test_weight_clamped_and_defaults(self):
+        minimal = '{"pattern": "\\\\w+"}'
+        result = _extract_rule_json(minimal)
+        assert result is not None
+        assert result["weight"] == 5        # default
+        assert result["placeholder"] == "[MASKED]"  # default
+        assert result["examples"] is None  # no examples provided
 
 
 # =============================================================================

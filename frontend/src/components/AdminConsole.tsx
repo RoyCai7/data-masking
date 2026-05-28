@@ -73,7 +73,8 @@ const tabs: Array<{ id: AdminTab; label: string }> = [
 
 export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const dialogRef = useModalA11y(onClose);
-  const [activeTab, setActiveTab] = useState<AdminTab>('keys');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>('rules');
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +116,9 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
       setRuleForm((prev: RuleDetail) => ({
         ...prev,
         pattern: res.pattern,
+        flags: res.flags || prev.flags,
+        placeholder: res.placeholder || prev.placeholder,
+        weight: res.weight ?? prev.weight,
         name: prev.name.trim() ? prev.name : (res.suggested_name ?? prev.name),
         category: (prev.category === 'custom' || !prev.category.trim())
           ? (res.suggested_category ?? prev.category)
@@ -202,11 +206,16 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
       setLoading(true);
       try {
         const keyInfo = await getMyKeyInfo();
-        if (keyInfo.role !== 'admin') {
-          throw new Error('Admin role required');
+        const admin = keyInfo.role === 'admin';
+        const orgOwner = keyInfo.is_org_owner === true;
+        if (!admin && !orgOwner) {
+          throw new Error('Admin or org owner role required');
         }
+        setIsAdmin(admin);
+        // org owner starts on rules tab; admin can see keys tab
+        if (!admin && orgOwner) setActiveTab('rules');
         setIsReady(true);
-        await Promise.all([loadKeys(), loadOrgs()]);
+        if (admin) await Promise.all([loadKeys(), loadOrgs()]);
       } catch (err) {
         handleError(err, 'Admin role required');
       } finally {
@@ -492,8 +501,8 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
               <ShieldCheckIcon className="w-6 h-6 text-suse-green" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Admin Console</h2>
-              <p className="text-sm text-gray-500">Manage keys, rules, suggestions, and audit history</p>
+              <h2 className="text-xl font-bold text-gray-900">{isAdmin ? 'Admin Console' : 'Manage Org Rules'}</h2>
+              <p className="text-sm text-gray-500">{isAdmin ? 'Manage keys, rules, suggestions, and audit history' : 'Create and manage rules for your organisation'}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
@@ -503,7 +512,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
 
         <div className="px-6 pt-4 flex items-center justify-between gap-4 border-b border-gray-100">
           <div className="flex gap-2 overflow-x-auto pb-4">
-            {tabs.map((tab) => (
+            {tabs.filter(tab => isAdmin || ['rules', 'suggestions', 'history'].includes(tab.id)).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -729,7 +738,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                           <select value={ruleForm.scope ?? 'private'} onChange={(e: ChangeEvent<HTMLSelectElement>) => setRuleForm((prev: RuleDetail) => ({ ...prev, scope: e.target.value as RuleDetail['scope'] }))} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
                             <option value="private">🔒 private (owner only)</option>
                             <option value="org">🏢 org (org members)</option>
-                            <option value="system">🌐 system (all users)</option>
+                            {isAdmin && <option value="system">🌐 system (all users)</option>}
                           </select>
                         </div>
                         <div>

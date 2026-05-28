@@ -69,6 +69,7 @@ export default function Header() {
   }, [refreshKeyInfo]);
 
   const isAdmin = keyInfo?.role === 'admin';
+  const canManageRules = isAdmin || keyInfo?.is_org_owner === true;
 
   return (
     <header className="bg-suse-green-dark text-white shadow-lg">
@@ -143,14 +144,14 @@ export default function Header() {
               <span>Key</span>
             </button>
 
-            {isAdmin && (
+            {canManageRules && (
               <button
                 onClick={() => setShowAdminConsole(true)}
                 className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
-                title="Admin Console"
+                title={isAdmin ? 'Admin Console' : 'Manage Org Rules'}
               >
                 <ShieldCheckIcon className="w-4 h-4" />
-                <span>Admin</span>
+                <span>{isAdmin ? 'Admin' : 'Manage'}</span>
               </button>
             )}
           </div>

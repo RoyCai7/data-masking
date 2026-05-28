@@ -357,6 +357,8 @@ export const getSystemStatus = async (): Promise<SystemStatus> => {
 export interface KeyInfo {
   name: string;
   role: string;
+  org_id: string;
+  is_org_owner: boolean;
   created_at: string;
   expires_at: string;
   key_preview: string;
@@ -453,12 +455,17 @@ export interface GenerateRegexRequest {
 
 export interface GenerateRegexResponse {
   pattern: string;
+  flags: string;
+  description?: string | null;
+  placeholder: string;
+  weight: number;
+  examples?: { match: string[]; no_match: string[] } | null;
   model: string;
   provider: string;
-  explanation?: string | null;
-  raw_response: string;
   suggested_name?: string | null;
   suggested_category?: string | null;
+  raw_response: string;
+  structured: boolean;
 }
 
 export interface LlmProvider {

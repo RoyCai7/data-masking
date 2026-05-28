@@ -3,14 +3,21 @@ Rules Management API
 
 Provides endpoints for:
   - Admin: Full CRUD on masking rules, import/export, approve suggestions
-  - User: Submit rule suggestions (feedback channel)
+  - Org owner: Self-service CRUD on org-scoped rules, approve suggestions targeting their org
+  - User: Submit rule suggestions (feedback channel), manage own private rules
   - Public: List active rules (for UI display)
 
 Role-based access:
-  - GET /rules            → public (no auth)
-  - POST/PUT/DELETE/PATCH → admin only
-  - POST suggestions      → any authenticated user
-  - PATCH suggestions     → admin only (approve/reject)
+  - GET /rules              → public (no auth)
+  - POST rules (system)     → admin only
+  - POST rules (org/private)→ org owner or admin
+  - PUT/DELETE              → rule write access (admin / org owner / creator)
+  - PATCH toggle            → rule write access
+  - POST suggestions        → any authenticated user
+  - PATCH suggestions/{id}  → org owner of targeted rule's org, or admin
+  - GET suggestions         → admin sees all; org owner sees their org's
+  - GET changelog           → admin sees all; org owner sees their org's
+  - GET/POST rules-export/import → admin (all); org owner (their org only)
 """
 from typing import Optional, List
 from fastapi import APIRouter, Request, HTTPException, Query
@@ -78,13 +85,34 @@ class SuggestionReview(BaseModel):
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
 def _require_admin(request: Request):
-    """Raise 403 if the request is not from an admin."""
+    """Raise 403 if not admin. Reserved for system-level operations only."""
     from app.core.auth import AUTH_ENABLED
     if not AUTH_ENABLED:
         return  # Dev mode — skip
     auth_user = getattr(request.state, "auth_user", None)
     if not auth_user or auth_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
+
+
+def _require_admin_or_org_owner(request: Request, org_id: Optional[str] = None):
+    """
+    Self-service gate: passes if caller is admin OR is an owner of the specified org.
+    org_id MUST be provided explicitly — this function never falls back to the caller's
+    own org_id to avoid fail-open privilege escalation.
+    Raises 403 if org_id is not supplied and caller is not admin.
+    """
+    from app.core.auth import AUTH_ENABLED
+    if not AUTH_ENABLED:
+        return
+    ctx = _get_auth_context(request)
+    if ctx["role"] == "admin":
+        return
+    # Fail closed: require explicit org_id — never infer from caller context
+    if not org_id:
+        raise HTTPException(status_code=403, detail="Org owner or admin role required")
+    if _is_org_owner_check(org_id, ctx["key_prefix"]):
+        return
+    raise HTTPException(status_code=403, detail="Org owner or admin role required")
 
 
 def _get_auth_context(request: Request) -> dict:
@@ -204,28 +232,54 @@ async def list_suggestions(
     status: Optional[str] = Query(default=None, description="Filter: pending|approved|rejected"),
 ):
     """
-    List suggestions. Admin sees all; regular users see only their own.
+    List suggestions.
+    - Admin: sees all.
+    - Org owner: sees suggestions they submitted + suggestions targeting their org's rules.
+    - Regular user: sees only their own submissions.
     """
     from app.core.auth import AUTH_ENABLED
-    user_name = _get_user_name(request)
+    ctx = _get_auth_context(request)
     auth_user = getattr(request.state, "auth_user", None)
 
-    # Admin sees all; others see only their own
     submitted_by = None
-    if AUTH_ENABLED and (not auth_user or auth_user.get("role") != "admin"):
-        submitted_by = user_name
+    org_id = None
 
-    suggestions = rule_service.list_suggestions(status=status, submitted_by=submitted_by)
+    if AUTH_ENABLED and ctx["role"] != "admin":
+        submitted_by = ctx["name"]
+        # Org owner also sees suggestions targeting their org's rules
+        if ctx.get("org_id") and _is_org_owner_check(ctx["org_id"], ctx["key_prefix"]):
+            org_id = ctx["org_id"]
+
+    suggestions = rule_service.list_suggestions(
+        status=status, submitted_by=submitted_by, org_id=org_id
+    )
     return {"total": len(suggestions), "suggestions": suggestions}
 
 
 @router.patch("/rules/suggestions/{suggestion_id}", summary="Review a suggestion")
 async def review_suggestion(suggestion_id: int, body: SuggestionReview, request: Request):
     """
-    Approve or reject a suggestion. Requires admin role.
-    Approved suggestions are automatically applied to the rules.
+    Approve or reject a suggestion.
+    - Admin: can review all suggestions.
+    - Org owner: can review suggestions targeting their org's rules.
     """
-    _require_admin(request)
+    from app.core.auth import AUTH_ENABLED
+    ctx = _get_auth_context(request)
+
+    if AUTH_ENABLED and ctx["role"] != "admin":
+        # Org owner: verify the suggestion's target rule belongs to their org
+        suggestion = rule_service.get_suggestion(suggestion_id)
+        if not suggestion:
+            raise HTTPException(status_code=404, detail=f"Suggestion {suggestion_id} not found")
+        target_rule_id = suggestion.get("rule_id")
+        if not target_rule_id:
+            raise HTTPException(status_code=403, detail="Only admins can review suggestions for new rules")
+        target_rule = rule_service.get_rule_detail(target_rule_id)
+        if not target_rule or target_rule.get("org_id") != ctx.get("org_id"):
+            raise HTTPException(status_code=403, detail="You can only review suggestions for rules in your org")
+        if not _is_org_owner_check(ctx["org_id"], ctx["key_prefix"]):
+            raise HTTPException(status_code=403, detail="Org owner role required to review suggestions")
+
     try:
         suggestion = rule_service.review_suggestion(
             suggestion_id,
@@ -246,9 +300,22 @@ async def list_changelog(
     rule_id: Optional[str] = Query(default=None, description="Filter by rule ID"),
     limit: int = Query(default=50, ge=1, le=500),
 ):
-    """View audit trail of all rule changes. Requires admin role."""
-    _require_admin(request)
-    entries = rule_service.list_changelog(rule_id=rule_id, limit=limit)
+    """
+    View audit trail of rule changes.
+    - Admin: sees all changes.
+    - Org owner: sees changes on their org's rules only.
+    """
+    from app.core.auth import AUTH_ENABLED
+    ctx = _get_auth_context(request)
+
+    org_id = None
+    if AUTH_ENABLED and ctx["role"] != "admin":
+        if ctx.get("org_id") and _is_org_owner_check(ctx["org_id"], ctx["key_prefix"]):
+            org_id = ctx["org_id"]
+        else:
+            raise HTTPException(status_code=403, detail="Org owner or admin role required")
+
+    entries = rule_service.list_changelog(rule_id=rule_id, limit=limit, org_id=org_id)
     return {"total": len(entries), "changelog": entries}
 
 
@@ -268,25 +335,35 @@ async def get_rule(rule_id: str):
 @router.post("/rules", summary="Create a new rule", status_code=201)
 async def create_rule(body: RuleCreate, request: Request):
     """
-    Create a new masking rule.
-    - Admin: can create rules at any scope (private / org / system).
-    - Authenticated user: can only create private rules within their own org.
+    Create a new masking rule — self-service model:
+    - Admin: any scope (private / org / system).
+    - Org owner: private or org scope within their own org.
+    - Regular user: private scope only.
     """
     from app.core.auth import AUTH_ENABLED
     ctx = _get_auth_context(request)
     is_admin = ctx["role"] == "admin"
 
     if AUTH_ENABLED and not is_admin:
-        # Non-admin users are restricted to creating private rules in their own org
         auth_user = getattr(request.state, "auth_user", None)
         if not auth_user:
             raise HTTPException(status_code=401, detail="Authentication required")
 
     data = body.model_dump()
+    requested_scope = data.get("scope", "private")
 
     if not is_admin:
-        # Force private scope and caller's org — user cannot choose scope or org
-        data["scope"] = "private"
+        is_org_owner = (
+            ctx.get("org_id")
+            and _is_org_owner_check(ctx["org_id"], ctx["key_prefix"])
+        )
+        # Block system-scope creation for non-admins
+        if requested_scope == "system":
+            raise HTTPException(status_code=403, detail="Only admins can create system-scoped rules")
+        # Block org-scope if not an org owner
+        if requested_scope == "org" and not is_org_owner:
+            raise HTTPException(status_code=403, detail="Only org owners can create org-scoped rules")
+        # Force to caller's own org
         data["org_id"] = ctx["org_id"]
     else:
         # Admin: inject caller's org as default if scope != system
@@ -356,8 +433,16 @@ async def delete_rule(rule_id: str, request: Request):
 
 @router.patch("/rules/{rule_id}/toggle", summary="Toggle rule enabled/disabled")
 async def toggle_rule(rule_id: str, request: Request):
-    """Toggle a rule between enabled and disabled. Requires admin role."""
-    _require_admin(request)
+    """
+    Toggle a rule between enabled and disabled — self-service model:
+    - system rule → admin only.
+    - org rule    → org owner or admin.
+    - private rule → creator or admin.
+    """
+    existing = rule_service.get_rule_detail(rule_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+    _require_rule_write_access(request, existing)
     try:
         rule = rule_service.toggle_rule(rule_id, changed_by=_get_user_name(request))
         status_text = "enabled" if rule["enabled"] else "disabled"
@@ -420,9 +505,22 @@ async def promote_rule(rule_id: str, body: PromoteRequest, request: Request):
 
 @router.get("/rules-export", summary="Export all rules as JSON")
 async def export_rules(request: Request):
-    """Export all rules as a JSON array. Requires admin role."""
-    _require_admin(request)
-    rules = rule_service.export_rules()
+    """
+    Export rules as a JSON array.
+    - Admin: exports all rules.
+    - Org owner: exports only their org's rules.
+    """
+    from app.core.auth import AUTH_ENABLED
+    ctx = _get_auth_context(request)
+
+    org_id = None
+    if AUTH_ENABLED and ctx["role"] != "admin":
+        if ctx.get("org_id") and _is_org_owner_check(ctx["org_id"], ctx["key_prefix"]):
+            org_id = ctx["org_id"]
+        else:
+            raise HTTPException(status_code=403, detail="Org owner or admin role required")
+
+    rules = rule_service.export_rules(org_id=org_id)
     return {"total": len(rules), "rules": rules}
 
 
@@ -431,14 +529,28 @@ async def import_rules(request: Request):
     """
     Bulk import rules from a JSON body.
     Body should be: {"rules": [{...}, {...}, ...]}
-    Existing rule IDs → updated; new IDs → created.
-    Requires admin role.
+    - Admin: imports at any scope; existing IDs → updated, new IDs → created.
+    - Org owner: imports rules forced to org scope within their own org.
     """
-    _require_admin(request)
+    from app.core.auth import AUTH_ENABLED
+    ctx = _get_auth_context(request)
+    is_admin = ctx["role"] == "admin"
+
+    if AUTH_ENABLED and not is_admin:
+        if not (ctx.get("org_id") and _is_org_owner_check(ctx["org_id"], ctx["key_prefix"])):
+            raise HTTPException(status_code=403, detail="Org owner or admin role required")
+
     body = await request.json()
     rules_data = body.get("rules", [])
     if not rules_data:
         raise HTTPException(status_code=400, detail="No rules in body. Expected {\"rules\": [...]}")
+
+    # Non-admin org owner: force all imported rules to their org scope
+    if not is_admin:
+        for item in rules_data:
+            item["scope"] = "org"
+            item["org_id"] = ctx["org_id"]
+
     result = rule_service.import_rules(rules_data, imported_by=_get_user_name(request))
     return {
         "message": f"Import complete: {result['created']} created, {result['updated']} updated",

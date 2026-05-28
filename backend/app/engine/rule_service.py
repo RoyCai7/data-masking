@@ -203,8 +203,8 @@ class RuleService:
     def create_suggestion(self, data: dict, submitted_by: str = "anonymous") -> dict:
         return repo_create_suggestion(data, submitted_by)
 
-    def list_suggestions(self, status: Optional[str] = None, submitted_by: Optional[str] = None) -> List[dict]:
-        return repo_list_suggestions(status, submitted_by)
+    def list_suggestions(self, status: Optional[str] = None, submitted_by: Optional[str] = None, org_id: Optional[str] = None) -> List[dict]:
+        return repo_list_suggestions(status, submitted_by, org_id=org_id)
 
     def get_suggestion(self, suggestion_id: int) -> Optional[dict]:
         return repo_get_suggestion(suggestion_id)
@@ -218,8 +218,8 @@ class RuleService:
 
     # ─── Import / Export ──────────────────────────────────────────────────
 
-    def export_rules(self) -> List[dict]:
-        return repo_export_rules()
+    def export_rules(self, org_id: Optional[str] = None) -> List[dict]:
+        return repo_export_rules(org_id=org_id)
 
     def import_rules(self, rules_data: List[dict], imported_by: str = "admin") -> dict:
         result = repo_import_rules(rules_data, imported_by)
@@ -228,8 +228,8 @@ class RuleService:
 
     # ─── Changelog ────────────────────────────────────────────────────────
 
-    def list_changelog(self, rule_id: Optional[str] = None, limit: int = 50) -> List[dict]:
-        return repo_list_changelog(rule_id, limit)
+    def list_changelog(self, rule_id: Optional[str] = None, limit: int = 50, org_id: Optional[str] = None) -> List[dict]:
+        return repo_list_changelog(rule_id, limit, org_id=org_id)
 
     # ─── DB-level queries (pass-through for API detail views) ─────────────
 

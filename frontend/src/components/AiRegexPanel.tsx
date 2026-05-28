@@ -254,17 +254,49 @@ export default function AiRegexPanel({
                 <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
                   Generated Pattern
                 </p>
-                {aiResult.provider && (
-                  <span className="text-xs text-violet-400 font-mono">{aiResult.provider}</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {aiResult.structured ? (
+                    <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium">✨ Full Rule</span>
+                  ) : (
+                    <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">⚠ Pattern only</span>
+                  )}
+                  {aiResult.provider && (
+                    <span className="text-xs text-violet-400 font-mono">{aiResult.provider}</span>
+                  )}
+                </div>
               </div>
               <code className="block text-xs font-mono text-gray-800 break-all whitespace-pre-wrap">
                 {aiResult.pattern}
               </code>
-              {aiResult.explanation && (
-                <p className="text-xs text-gray-500 italic border-t border-violet-100 pt-2">
-                  {aiResult.explanation}
+              {aiResult.flags && (
+                <p className="text-xs text-gray-500">Flags: <span className="font-mono">{aiResult.flags}</span></p>
+              )}
+              {aiResult.description && (
+                <p className="text-xs text-gray-600 italic border-t border-violet-100 pt-2">
+                  {aiResult.description}
                 </p>
+              )}
+              {(aiResult.placeholder || aiResult.weight != null) && (
+                <div className="flex gap-3 text-xs text-gray-500 border-t border-violet-100 pt-2">
+                  {aiResult.placeholder && <span>Placeholder: <span className="font-mono text-gray-700">{aiResult.placeholder}</span></span>}
+                  {aiResult.weight != null && <span>Weight: <span className="font-mono text-gray-700">{aiResult.weight}</span></span>}
+                </div>
+              )}
+              {aiResult.examples && (
+                <div className="border-t border-violet-100 pt-2 space-y-1">
+                  {aiResult.examples.match && aiResult.examples.match.length > 0 && (
+                    <div>
+                      <span className="text-xs font-medium text-green-700">✓ Match: </span>
+                      <span className="text-xs font-mono text-gray-600">{aiResult.examples.match.slice(0, 3).join(', ')}</span>
+                    </div>
+                  )}
+                  {aiResult.examples.no_match && aiResult.examples.no_match.length > 0 && (
+                    <div>
+                      <span className="text-xs font-medium text-red-600">✗ No match: </span>
+                      <span className="text-xs font-mono text-gray-600">{aiResult.examples.no_match.slice(0, 3).join(', ')}</span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             <button

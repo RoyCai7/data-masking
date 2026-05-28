@@ -80,19 +80,23 @@ OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "").strip()
 
 _SYSTEM_PROMPT = (
     "You are a regex expert assistant. "
-    "Your ONLY job is to output a single valid regular expression pattern. "
+    "Your job is to generate a masking rule in strict JSON format. "
     "Rules:\n"
-    "1. Output ONLY the regex pattern itself, wrapped in a fenced code block:\n"
+    "1. Output ONLY a single JSON object wrapped in a fenced code block:\n"
+    "   ```json\n"
+    "   { ... }\n"
     "   ```\n"
-    "   your_pattern_here\n"
-    "   ```\n"
-    "2. After the code block you MAY add a brief one-sentence explanation.\n"
-    "3. Do NOT add imports, variable assignments, or any programming language syntax.\n"
-    "4. Do NOT repeat the user description.\n"
-    "5. The pattern must be usable directly with Python's `re` module.\n"
-    "6. Use non-capturing groups (?:...) unless a capturing group is essential.\n"
-    "7. If the pattern requires flags (e.g. IGNORECASE), mention them in the "
-    "explanation only - do not embed them in the pattern.\n"
+    "2. The JSON MUST contain exactly these fields:\n"
+    "   - pattern (string): valid Python re-compatible regex, no embedded flags\n"
+    "   - flags (string): comma-separated Python re flags if needed, e.g. 'IGNORECASE' or ''\n"
+    "   - description (string): one sentence in the user's language explaining what this rule masks\n"
+    "   - placeholder (string): replacement token shown after masking, e.g. '[EMAIL]'\n"
+    "   - weight (integer 1-10): sensitivity score — 10 = highly sensitive (passwords/IDs), 1 = low risk\n"
+    "   - examples (object): {\"match\": [3 example strings the pattern WILL match], "
+    "\"no_match\": [2 example strings it will NOT match]}\n"
+    "3. Use non-capturing groups (?:...) unless capturing is essential.\n"
+    "4. Do NOT add any text outside the JSON code block.\n"
+    "5. The pattern must work with Python's re.search().\n"
 )
 
 
@@ -102,7 +106,7 @@ def _build_user_prompt(description: str, context: Optional[str]) -> str:
 
 
 def _extract_regex(text: str) -> Optional[str]:
-    """Extract the regex pattern from LLM response text."""
+    """Extract the regex pattern from LLM response text (legacy fallback)."""
     fenced = re.search(r"```(?:regex|python|text)?\s*\n?(.*?)```", text, re.DOTALL)
     if fenced:
         c = fenced.group(1).strip()
@@ -121,13 +125,58 @@ def _extract_regex(text: str) -> Optional[str]:
     return text.strip() or None
 
 
-def _extract_explanation(raw: str) -> Optional[str]:
-    """Return everything after the first fenced code block, if any."""
-    parts = re.split(r"```.*?```", raw, flags=re.DOTALL, maxsplit=1)
-    if len(parts) > 1:
-        tail = parts[1].strip()
-        return tail if tail else None
-    return None
+def _extract_rule_json(text: str) -> Optional[dict]:
+    """
+    Extract and validate the structured rule JSON from LLM response.
+    Returns a dict with keys: pattern, flags, description, placeholder, weight, examples.
+    Returns None if parsing fails (caller should fall back to legacy extraction).
+    """
+    import json
+    # Try fenced ```json ... ``` block first
+    fenced = re.search(r"```(?:json)?\s*\n?({.*?})\s*```", text, re.DOTALL)
+    raw_json = fenced.group(1).strip() if fenced else None
+
+    # Fallback: find the first {...} blob in the text
+    if not raw_json:
+        m = re.search(r"({[\s\S]*})", text)
+        raw_json = m.group(1).strip() if m else None
+
+    if not raw_json:
+        return None
+
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return None
+
+    # Validate required fields
+    if not isinstance(data.get("pattern"), str) or not data["pattern"].strip():
+        return None
+
+    # Normalise / supply defaults for optional fields
+    try:
+        weight = max(1, min(10, int(float(data.get("weight", 5)))))
+    except (TypeError, ValueError):
+        weight = 5
+    result = {
+        "pattern": data["pattern"].strip(),
+        "flags": str(data.get("flags") or "").strip(),
+        "description": str(data.get("description") or "").strip() or None,
+        "placeholder": str(data.get("placeholder") or "[MASKED]").strip(),
+        "weight": weight,
+        "examples": None,
+    }
+
+    raw_ex = data.get("examples")
+    if isinstance(raw_ex, dict):
+        match_ex = raw_ex.get("match") or []
+        no_match_ex = raw_ex.get("no_match") or []
+        result["examples"] = {
+            "match": [str(x) for x in match_ex[:5]],
+            "no_match": [str(x) for x in no_match_ex[:3]],
+        }
+
+    return result
 
 
 # keyword → category mapping (checked in order; first match wins)
@@ -319,13 +368,22 @@ class GenerateRegexRequest(BaseModel):
 
 
 class GenerateRegexResponse(BaseModel):
+    # Core rule fields — ready to POST directly to /rules
     pattern: str
+    flags: str = ""
+    description: Optional[str] = None
+    placeholder: str = "[MASKED]"
+    weight: int = 5
+    examples: Optional[Dict[str, List[str]]] = None
+    # Metadata
     model: str
     provider: str
-    explanation: Optional[str] = None
-    raw_response: str
     suggested_name: Optional[str] = None
     suggested_category: Optional[str] = None
+    # Raw LLM output for debugging
+    raw_response: str
+    # True if structured JSON was successfully parsed; False = legacy fallback
+    structured: bool = False
 
 
 # ---- Endpoints --------------------------------------------------------------
@@ -428,6 +486,27 @@ async def generate_regex(body: GenerateRegexRequest):
         )
         raise HTTPException(status_code=502, detail="LLM returned an empty response")
 
+    suggested_name, suggested_category = _suggest_meta(body.description)
+
+    # Try structured JSON extraction first; fall back to legacy pattern-only extraction
+    rule_json = _extract_rule_json(raw_text)
+    if rule_json:
+        return GenerateRegexResponse(
+            pattern=rule_json["pattern"],
+            flags=rule_json["flags"],
+            description=rule_json["description"],
+            placeholder=rule_json["placeholder"],
+            weight=min(10, max(1, rule_json["weight"])),
+            examples=rule_json["examples"],
+            model=body.model,
+            provider=provider_id,
+            suggested_name=suggested_name,
+            suggested_category=suggested_category,
+            raw_response=raw_text,
+            structured=True,
+        )
+
+    # Legacy fallback: LLM didn't return valid JSON
     pattern = _extract_regex(raw_text)
     if not pattern:
         logger.warning(
@@ -438,18 +517,16 @@ async def generate_regex(body: GenerateRegexRequest):
         raise HTTPException(status_code=502, detail="Could not extract a regex from the LLM response")
 
     logger.info(
-        "generate_regex_ok request_id=%s provider=%s model=%s elapsed=%.2fs pattern_len=%d",
+        "generate_regex_ok request_id=%s provider=%s model=%s elapsed=%.2fs pattern_len=%d (legacy fallback)",
         request_id, provider_id, body.model, elapsed, len(pattern),
     )
-
-    suggested_name, suggested_category = _suggest_meta(body.description)
 
     return GenerateRegexResponse(
         pattern=pattern,
         model=body.model,
         provider=provider_id,
-        explanation=_extract_explanation(raw_text),
         raw_response=raw_text,
         suggested_name=suggested_name,
         suggested_category=suggested_category,
+        structured=False,
     )
