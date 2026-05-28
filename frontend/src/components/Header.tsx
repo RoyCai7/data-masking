@@ -97,15 +97,6 @@ export default function Header() {
               </div>
             )}
             
-            <a
-              href="/docs"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-suse-green-light hover:text-white transition-colors"
-            >
-              API Docs
-            </a>
-
             <button
               onClick={() => setShowRuleList(true)}
               className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
@@ -114,6 +105,26 @@ export default function Header() {
               <span className="text-base leading-none">📋</span>
               <span>Rules</span>
             </button>
+
+            <button
+              onClick={() => setShowSuggestRule(true)}
+              className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
+              title="New Rule"
+            >
+              <LightBulbIcon className="w-4 h-4" />
+              <span>New Rule</span>
+            </button>
+
+            {canManageRules && (
+              <button
+                onClick={() => setShowAdminConsole(true)}
+                className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
+                title={isAdmin ? 'Admin Console' : 'Manage Org Rules'}
+              >
+                <ShieldCheckIcon className="w-4 h-4" />
+                <span>{isAdmin ? 'Admin' : 'Manage'}</span>
+              </button>
+            )}
 
             {keyInfo && (
               <button
@@ -127,15 +138,6 @@ export default function Header() {
             )}
 
             <button
-              onClick={() => setShowSuggestRule(true)}
-              className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
-              title="New Rule"
-            >
-              <LightBulbIcon className="w-4 h-4" />
-              <span>New Rule</span>
-            </button>
-
-            <button
               onClick={() => setShowSettings(true)}
               className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
               title="API Key Settings"
@@ -144,16 +146,14 @@ export default function Header() {
               <span>Key</span>
             </button>
 
-            {canManageRules && (
-              <button
-                onClick={() => setShowAdminConsole(true)}
-                className="flex items-center space-x-1 text-sm text-amber-200 hover:text-white transition-colors"
-                title={isAdmin ? 'Admin Console' : 'Manage Org Rules'}
-              >
-                <ShieldCheckIcon className="w-4 h-4" />
-                <span>{isAdmin ? 'Admin' : 'Manage'}</span>
-              </button>
-            )}
+            <a
+              href="/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-suse-green-light hover:text-white transition-colors"
+            >
+              API Docs
+            </a>
           </div>
         </div>
       </div>
