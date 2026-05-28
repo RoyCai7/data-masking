@@ -273,6 +273,14 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    # 14. Add example column — human-readable sample match string for each rule
+    try:
+        conn.execute("ALTER TABLE rules ADD COLUMN example TEXT")
+        conn.commit()
+        logger.info("Migration 14: added 'example' column to rules")
+    except Exception:
+        pass  # column already exists
+
     logger.info(f"Rules database initialized at {DB_PATH}")
 
 

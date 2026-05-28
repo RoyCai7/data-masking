@@ -102,6 +102,98 @@ RULE_DESCRIPTIONS: dict = {
     "supportconfig_removed":   "Already-masked marker from supportconfig tool",
 }
 
+# Example match strings shown in the UI for each built-in rule
+BUILTIN_EXAMPLES: dict[str, str] = {
+    # Network
+    "ipv4":                     "192.168.1.100",
+    "ipv6":                     "2001:db8::1",
+    "mac_address":              "00:1A:2B:3C:4D:5E",
+    "url":                      "https://example.com/path?q=1",
+    "hostname":                 "server01.example.com",
+    "fqdn":                     "db.prod.internal.corp",
+    "nfs_mount":                "fileserver:/exports/data/share",
+    "iscsi_iqn":                "iqn.2023-01.com.example:storage",
+    "proxy_auth_url":           "http://user:pass@proxy.corp.com:3128",
+    # PII
+    "email":                    "john.doe@example.com",
+    "phone_intl":               "+1-800-555-0199",
+    "cn_id_card":               "110101199003071234",
+    "credit_card":              "4111 1111 1111 1111",
+    "path_user":                "/home/jdoe/config",
+    "username":                 "admin=jdoe",
+    # Credentials
+    "password":                 "password=Sup3rS3cr3t!",
+    "api_key_pattern":          "api_key=sk-abc123xyz789",
+    "private_key":              "-----BEGIN RSA PRIVATE KEY-----",
+    "jwt":                      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.abc123",
+    "ssh_pub_key":              "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAB...",
+    "bearer_token":             "Bearer eyJhbGciOiJIUzI1NiJ9...",
+    "license":                  "ABCDE-12345-FGHIJ-67890",
+    "shadow_hash":              "$6$rounds=5000$salt$hashvalue",
+    "ldap_bind_dn":             "binddn=cn=admin,dc=example,dc=com",
+    "ldap_bind_pw":             "bindpw=s3cr3tP@ss",
+    "db_connection_string":     "postgresql://user:pass@db.host:5432/mydb",
+    "snmp_community":           "community public",
+    "wifi_psk":                 "psk=MyWiFiPassword123",
+    "kerberos_principal":       "host/server.example.com@EXAMPLE.COM",
+    "aws_access_key":           "AKIAIOSFODNN7EXAMPLE",
+    "aws_secret_key":           "aws_secret_access_key=wJalrXUtnFEMI/K7MDENG",
+    "docker_registry_auth":     '"auth": "dXNlcjpwYXNzd29yZA=="',
+    "k8s_secret_data":          "data:\n  token: SGVsbG9Xb3JsZA==",
+    "k8s_service_token":        "/var/run/secrets/kubernetes.io/serviceaccount/token",
+    "ssl_cert_fingerprint":     "SHA256 Fingerprint=2B:32:54:AA:BB:CC:DD:EE:FF:00",
+    "gpg_key_id":               "Key ID 0xABCD1234 (GPG)",
+    "env_secret":               "export DB_PASSWORD=s3cr3t",
+    "connection_auth":          "ftp://user:pass@ftp.example.com/data",
+    "aws_temp_key":             "ASIAIOSFODNN7EXAMPLE",
+    "aws_session_token":        "aws_session_token=AQoDYXdzEJr...",
+    "azure_account_key":        "AccountKey=dGVzdGtleXRlc3RrZXk==",
+    "azure_sas_token":          "?sig=abcXYZ%2Fmore%3D&sv=2021",
+    "azure_connection_string":  "DefaultEndpointsProtocol=https;AccountName=acct",
+    "gcp_private_key_json":     '"private_key": "-----BEGIN PRIVATE KEY-----"',
+    "gcp_service_account":      "my-sa@my-project.iam.gserviceaccount.com",
+    "x_auth_token":             "X-Auth-Token: abcdef1234567890abcdef1234567890abcdef12",
+    "identity_tag":             "<identity>eyJhbGciOiJIUzI1NiJ9.test.abc",
+    # LDAP
+    "ldap_dn_dc":               "DC=example,DC=com",
+    "ldap_dn_full":             "CN=John Doe,OU=Users,DC=example,DC=com",
+    # Certificate / Key Blocks
+    "certificate_block":        "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+    "private_key_block":        "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
+    # Hardware / dmidecode
+    "asset_tag":                "Asset Tag: SVC-TAG-001A",
+    "part_number":              "Part Number: 0A1B2C3D",
+    "product_serial":           "Chassis Serial Number: VMware-56-78",
+    # SUSE ecosystem
+    "bsc_number":               "bsc#1234567",
+    "scc_regcode":              "regcode=REGCODE-ABCDE-12345",
+    "zypper_repo_url":          "https://user:token@updates.suse.com/repo",
+    "smt_rmt_url":              "https://smt.example.com/repo/SUSE",
+    "suse_connect_key":         "registration_key=SUSEActKey2024abcd",
+    "autoyast_password":        "<user_password>$6$salt$hash</user_password>",
+    "autoyast_encrypted":       "<encrypted>$1$hash</encrypted>",
+    "salt_master_key":          "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
+    "suma_api_token":           "session_key=abcdef1234567890abcd",
+    "supportconfig_filename":   "nts_myserver_230601_1200.txz",
+    "zypper_cookie":            "AnonymousUniqueId=abc123xyz",
+    "rancher_token":            "token-ab12c:abc123xyz789abc123xyz789abc1",
+    "rancher_cluster_reg":      "CATTLE_TOKEN=abc123xyz789abc123xyz789",
+    "corosync_authkey":         "/etc/corosync/authkey generated",
+    "drbd_shared_secret":       'shared-secret "my-drbd-secret"',
+    "sap_hana_credential":      "HANA_PASSWORD=Hana1234!",
+    "sap_sid":                  "SID=HDB",
+    "supportconfig_removed":    "*REMOVED BY SUPPORTCONFIG*",
+    "kube_config_token":        "token: eyJhbGciOiJSUzI1NiJ9...",
+    "helm_secret":              "helm.sh/release.v1=H4sIAAAAAAAA...",
+    "github_token":             "ghp_16C7e42F292c6912E7710c838347Ae5B3",
+    "generic_secret_header":    "client_secret=mysecretvalue123",
+    # System identifiers
+    "uuid":                     "550e8400-e29b-41d4-a716-446655440000",
+    "serial_number":            "Serial Number: ABC123XYZ",
+    "bios_uuid":                "System UUID: 6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "wwn":                      "wwpn=500507680B20BA87",
+}
+
 BUILTIN_RULES = [
     # ── Network ──
     {
@@ -938,8 +1030,8 @@ def seed_builtin_rules():
         cursor.execute(
             """INSERT INTO rules
                (id, name, category, pattern, flags, strategy, placeholder,
-                weight, enabled, is_builtin, scope, org_id, use_count, version, created_at, updated_at, created_by, description)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', NULL, 0, 1, ?, ?, 'system', ?)""",
+                weight, enabled, is_builtin, scope, org_id, use_count, version, created_at, updated_at, created_by, description, example)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', NULL, 0, 1, ?, ?, 'system', ?, ?)""",
             (
                 rule["id"], rule["name"], rule["category"],
                 rule["pattern"], rule.get("flags", ""),
@@ -948,12 +1040,22 @@ def seed_builtin_rules():
                 1 if rule.get("enabled", True) else 0,
                 now, now,
                 RULE_DESCRIPTIONS.get(rule["id"]),
+                BUILTIN_EXAMPLES.get(rule["id"]),
             )
         )
         inserted += 1
 
+    # Backfill example for rules that already exist but have no example yet
+    backfilled = 0
+    for rule_id, example in BUILTIN_EXAMPLES.items():
+        cursor.execute(
+            "UPDATE rules SET example = ? WHERE id = ? AND is_builtin = 1 AND (example IS NULL OR example = '')",
+            (example, rule_id)
+        )
+        backfilled += cursor.rowcount
+
     conn.commit()
-    logger.info(f"Seeded {inserted} built-in rules (total built-in: {len(BUILTIN_RULES)})")
+    logger.info(f"Seeded {inserted} built-in rules, backfilled examples for {backfilled} (total built-in: {len(BUILTIN_RULES)})")
 
 
 # ─── Internal helpers ──────────────────────────────────────────────────────────

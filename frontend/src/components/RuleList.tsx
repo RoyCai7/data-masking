@@ -163,7 +163,13 @@ export default function RuleList({ onClose }: RuleListProps) {
                 {rule.pattern && (
                   <p className="mt-1.5 text-xs text-gray-500 font-mono bg-gray-50 rounded px-2 py-1 truncate" title={rule.pattern}>
                     {rule.description
-                      ? <><span className="not-italic text-gray-600">{rule.description}</span></>                      : rule.pattern}
+                      ? <><span className="not-italic text-gray-600">{rule.description}</span></>
+                      : rule.pattern}
+                  </p>
+                )}
+                {rule.example && (
+                  <p className="mt-0.5 text-xs font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 inline-block max-w-full truncate" title={rule.example}>
+                    e.g.&nbsp;{rule.example}
                   </p>
                 )}
               </div>

@@ -894,6 +894,11 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                             )}
                           </div>
                           <p className="mt-2 text-xs text-gray-500 font-mono break-all">{rule.description || rule.pattern}</p>
+                          {rule.example && (
+                            <p className="mt-1 text-xs font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 inline-block max-w-full truncate" title={rule.example}>
+                              e.g.&nbsp;{rule.example}
+                            </p>
+                          )}
                           <p className="mt-1 text-xs text-gray-400">strategy={rule.strategy} · weight={rule.weight} · placeholder={rule.placeholder}</p>
                         </div>
                         <div className="flex flex-wrap gap-2 justify-end">

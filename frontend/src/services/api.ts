@@ -124,6 +124,7 @@ export interface RuleDetail extends MaskingRule {
   use_count?: number;
   is_builtin?: boolean;
   description?: string | null;
+  example?: string | null;
   version?: number;
   created_at?: string;
   updated_at?: string;
