@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { KeyIcon, LightBulbIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
-import { getApiKey, getMyKeyInfo, getSystemStatus, KeyInfo, SystemStatus } from '../services/api';
+import { getApiKey, getMyKeyInfo, KeyInfo } from '../services/api';
 import AdminConsole from './AdminConsole';
 import Settings from './Settings';
 import SuggestRule from './SuggestRule';
@@ -17,7 +17,6 @@ const SuseLogo = () => (
 );
 
 export default function Header() {
-  const [status, setStatus] = useState<SystemStatus | null>(null);
   const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdminConsole, setShowAdminConsole] = useState(false);
@@ -40,19 +39,7 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const data = await getSystemStatus();
-        setStatus(data);
-      } catch (error) {
-        console.error('Failed to fetch status:', error);
-      }
-    };
-
-    fetchStatus();
     refreshKeyInfo();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
   }, [refreshKeyInfo]);
 
   // Listen for 401 auth errors to auto-open Settings
@@ -84,19 +71,7 @@ export default function Header() {
             </div>
           </div>
 
-          {/* Status Badge */}
           <div className="flex items-center space-x-4">
-            {status && (
-              <div className="flex items-center space-x-2 bg-suse-green-dark/50 rounded-full px-4 py-1.5">
-                <span className={`w-2 h-2 rounded-full ${
-                  status.executor.available_slots > 0 ? 'bg-suse-green animate-pulse' : 'bg-yellow-400'
-                }`} />
-                <span className="text-sm">
-                  {status.executor.active_tasks}/{status.executor.max_workers} tasks
-                </span>
-              </div>
-            )}
-            
             <button
               onClick={() => setShowRuleList(true)}
               className="flex items-center space-x-1 text-sm text-suse-green-light hover:text-white transition-colors"
