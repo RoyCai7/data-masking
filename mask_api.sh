@@ -32,13 +32,7 @@ usage() {
 }
 
 json_get() {
-  python3 - "$1" <<'PY'
-import json
-import sys
-
-key = sys.argv[1]
-print(json.load(sys.stdin)[key])
-PY
+  python3 -c "import json,os,sys; print(json.loads(os.environ['_JSON_DATA'])['$1'])"
 }
 
 # Parse flags
@@ -73,18 +67,20 @@ RESPONSE=$(curl -s -X POST "$BASE/mask" \
   -F "file=@$FILE" \
   -F "whitelist=$WHITELIST")
 echo "$RESPONSE" | python3 -m json.tool
-TASK_ID=$(echo "$RESPONSE" | json_get task_id)
-SESSION_ID=$(echo "$RESPONSE" | json_get session_id)
+export _JSON_DATA="$RESPONSE"
+TASK_ID=$(json_get task_id)
+SESSION_ID=$(json_get session_id)
 echo "Task ID:    $TASK_ID"
 echo "Session ID: $SESSION_ID"
 
 # Step 2: Poll status
 echo -e "\n[2/4] Waiting for completion..."
 while true; do
-  STATUS=$(curl -s "$BASE/task/$TASK_ID" \
+  POLL=$(curl -s "$BASE/task/$TASK_ID" \
     -H "X-API-Key: $API_KEY" \
-    -H "X-Session-ID: $SESSION_ID" \
-    | json_get status)
+    -H "X-Session-ID: $SESSION_ID")
+  export _JSON_DATA="$POLL"
+  STATUS=$(json_get status)
   echo "  status: $STATUS"
   [ "$STATUS" = "completed" ] && break
   [ "$STATUS" = "failed" ] && echo "Task failed!" && exit 1

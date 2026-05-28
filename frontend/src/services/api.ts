@@ -82,6 +82,7 @@ export interface ReportBreakdown {
     line: number;
     original: string;
     masked: string;
+    file?: string;
   }>;
 }
 

@@ -473,13 +473,15 @@ class MaskingEngine:
                     total_lines += result.total_lines
                     whitelist_skipped += result.whitelist_skipped
                     
+                    rel_path = os.path.relpath(text_file, extract_dir)
+                    
                     for breakdown in result.breakdown:
                         stats = all_stats[breakdown.rule_id]
                         stats.matches += breakdown.matches
-                        # Keep up to 3 examples per rule
+                        # Keep up to 3 examples per rule, annotated with relative file path
                         for ex in breakdown.examples:
                             if len(stats.examples) < 3:
-                                stats.examples.append(ex)
+                                stats.examples.append({**ex, "file": rel_path})
                     
                 except Exception as e:
                     logger.warning(f"Failed to process file {text_file}: {e}")

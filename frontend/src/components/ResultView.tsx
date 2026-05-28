@@ -282,11 +282,19 @@ export default function ResultView({ task, report, onBack, isLoading }: ResultVi
                   {rule.examples.map((example, index) => (
                     <div key={index} className="px-4 py-3 font-mono text-sm">
                       <div className="flex items-center space-x-2 mb-1">
-                        <span className="text-gray-400 w-16">Line {example.line}</span>
+                        <span className="text-gray-400 shrink-0">
+                          {example.file ? (
+                            <span title={example.file}>{example.file}:{example.line}</span>
+                          ) : (
+                            <>Line {example.line}</>
+                          )}
+                        </span>
                         <span className="diff-removed px-2 py-0.5 rounded">{example.original}</span>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className="text-gray-400 w-16"></span>
+                        <span className="text-gray-400 shrink-0 invisible">
+                          {example.file ? `${example.file}:${example.line}` : `Line ${example.line}`}
+                        </span>
                         <span className="diff-added px-2 py-0.5 rounded">{example.masked}</span>
                       </div>
                     </div>
