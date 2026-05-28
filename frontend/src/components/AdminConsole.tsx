@@ -68,11 +68,11 @@ const emptyRule: RuleDetail = {
 // Admin sees all tabs; org owner only sees org_rules, suggestions, history
 const adminTabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'keys', label: 'Keys' },
+  { id: 'orgs', label: 'Orgs' },
   { id: 'system_rules', label: '🌐 System Rules' },
   { id: 'org_rules', label: '🏢 Org Rules' },
   { id: 'suggestions', label: 'Rule Approvals' },
   { id: 'history', label: 'History' },
-  { id: 'orgs', label: 'Orgs' },
 ];
 const orgOwnerTabs: Array<{ id: AdminTab; label: string }> = [
   { id: 'org_rules', label: 'Rules' },
