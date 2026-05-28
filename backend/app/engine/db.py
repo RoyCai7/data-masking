@@ -227,6 +227,25 @@ def init_db():
     except Exception:
         pass
 
+    # 11. Add description column to rules and backfill builtin descriptions
+    try:
+        conn.execute("ALTER TABLE rules ADD COLUMN description TEXT")
+        conn.commit()
+        logger.info("Migration 11: added 'description' column to rules")
+    except Exception:
+        pass
+    try:
+        from app.engine.repo_rules import RULE_DESCRIPTIONS
+        for rule_id, desc in RULE_DESCRIPTIONS.items():
+            conn.execute(
+                "UPDATE rules SET description = ? WHERE id = ? AND is_builtin = 1 AND (description IS NULL OR description = '')",
+                (desc, rule_id)
+            )
+        conn.commit()
+        logger.info(f"Migration 11: backfilled descriptions for {len(RULE_DESCRIPTIONS)} builtin rules")
+    except Exception as e:
+        logger.warning(f"Migration 11: description backfill failed: {e}")
+
     logger.info(f"Rules database initialized at {DB_PATH}")
 
 

@@ -123,6 +123,7 @@ export interface RuleDetail extends MaskingRule {
   org_id?: string | null;
   use_count?: number;
   is_builtin?: boolean;
+  description?: string | null;
   version?: number;
   created_at?: string;
   updated_at?: string;

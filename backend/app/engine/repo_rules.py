@@ -13,6 +13,95 @@ logger = logging.getLogger(__name__)
 
 # ─── Built-in rule seed data ───────────────────────────────────────────────────
 
+# Human-readable descriptions for each built-in rule (shown in UI instead of raw regex)
+RULE_DESCRIPTIONS: dict = {
+    # Network
+    "ipv4":                    "IPv4 addresses, e.g. 192.168.1.1",
+    "ipv6":                    "IPv6 addresses, e.g. 2001:db8::1",
+    "mac_address":             "MAC/hardware addresses, e.g. AA:BB:CC:DD:EE:FF",
+    "url":                     "HTTP and HTTPS URLs",
+    "hostname":                "Hostnames and domain names",
+    "fqdn":                    "Fully qualified domain names with 2+ levels",
+    "nfs_mount":               "NFS mount paths in server:/path format",
+    "iscsi_iqn":               "iSCSI IQN storage device identifiers",
+    # PII
+    "email":                   "Email addresses, e.g. user@example.com",
+    "phone_intl":              "International phone numbers with country code",
+    "cn_id_card":              "Chinese national ID card numbers (18-digit)",
+    "credit_card":             "Visa / Mastercard / Amex card numbers",
+    "path_user":               "Linux /home/username directory paths",
+    "username":                "Username key-value pairs in configs and logs",
+    # Credential
+    "password":                "Password fields in config files (password=...)",
+    "api_key_pattern":         "API keys and tokens in key=value format",
+    "private_key":             "PEM private key header line",
+    "jwt":                     "JSON Web Tokens (three-part Base64 format)",
+    "ssh_pub_key":             "SSH public key strings",
+    "bearer_token":            "HTTP Bearer authorization tokens",
+    "license":                 "Software license keys, e.g. AB123-CD456-EF789",
+    "proxy_auth_url":          "Proxy URLs with embedded credentials (user:pass@host)",
+    "shadow_hash":             "Linux /etc/shadow password hash strings",
+    "ldap_bind_dn":            "LDAP bind DN in configuration files",
+    "ldap_bind_pw":            "LDAP bind/root password in configuration files",
+    "db_connection_string":    "Database connection strings (mysql://, postgres://, etc.)",
+    "snmp_community":          "SNMP community strings in network config",
+    "wifi_psk":                "WiFi WPA pre-shared key values",
+    "kerberos_principal":      "Kerberos principal names (user/host@REALM)",
+    "aws_access_key":          "AWS permanent access key IDs (AKIA...)",
+    "aws_secret_key":          "AWS secret access key values",
+    "docker_registry_auth":    "Docker config.json base64 auth credentials",
+    "k8s_secret_data":         "Kubernetes Secret data blocks with base64 values",
+    "k8s_service_token":       "Kubernetes service account token file paths",
+    "env_secret":              "Environment variables containing secrets (SECRET=, TOKEN=)",
+    "connection_auth":         "Generic protocol URLs with embedded user:password",
+    "aws_temp_key":            "AWS temporary access key IDs (ASIA...)",
+    "aws_session_token":       "AWS session tokens and temporary secret keys",
+    "azure_account_key":       "Azure Storage account keys",
+    "azure_sas_token":         "Azure SAS token query parameters",
+    "azure_connection_string": "Azure Storage connection strings",
+    "gcp_private_key_json":    "GCP service account private key in JSON",
+    "gcp_service_account":     "GCP service account email addresses",
+    "x_auth_token":            "HTTP X-Auth-Token / Authorization header values",
+    "identity_tag":            "Identity tags containing JWT-like tokens",
+    "ldap_dn_dc":              "LDAP Distinguished Names in DC= format",
+    "ldap_dn_full":            "Full LDAP DN paths (CN=, OU=, DC=, ...)",
+    "certificate_block":       "Full X.509 PEM certificate blocks",
+    "private_key_block":       "Full PEM private key blocks (RSA, EC, OPENSSH, etc.)",
+    "kube_config_token":       "Kubeconfig tokens and client certificate data",
+    "helm_secret":             "Helm chart secret values",
+    "github_token":            "GitHub personal access tokens (ghp_, gho_, ghs_, etc.)",
+    "generic_secret_header":   "Generic secret / encryption key fields in configs",
+    # System
+    "uuid":                    "UUIDs, e.g. 550e8400-e29b-41d4-a716-446655440000",
+    "serial_number":           "Hardware serial numbers from dmidecode or config",
+    "bios_uuid":               "BIOS / DMI system UUIDs",
+    "wwn":                     "Fibre Channel / SAN World Wide Names",
+    "ssl_cert_fingerprint":    "SSL/TLS certificate SHA fingerprints",
+    "gpg_key_id":              "GPG/PGP key IDs (associated with gpg context)",
+    "asset_tag":               "Hardware asset tags from dmidecode output",
+    "part_number":             "Hardware part numbers from dmidecode output",
+    "product_serial":          "Product / chassis serial numbers from dmidecode",
+    # SUSE
+    "bsc_number":              "SUSE Bugzilla IDs (bsc#, boo#, bnc#, fate#)",
+    "scc_regcode":             "SUSE Customer Center registration codes",
+    "zypper_repo_url":         "Zypper repository URLs with embedded credentials",
+    "smt_rmt_url":             "SUSE SMT / RMT update server URLs",
+    "suse_connect_key":        "SUSEConnect activation and addon keys",
+    "autoyast_password":       "AutoYaST XML user_password hash fields",
+    "autoyast_encrypted":      "AutoYaST XML encrypted value fields",
+    "salt_master_key":         "Salt Stack RSA key blocks",
+    "suma_api_token":          "SUSE Manager (SUMA) API session keys",
+    "supportconfig_filename":  "Supportconfig archive filenames (contain hostname)",
+    "zypper_cookie":           "Zypper anonymous user ID / cookie values",
+    "rancher_token":           "Rancher API bearer tokens (token-xxxxx:...)",
+    "rancher_cluster_reg":     "Rancher cluster registration / cattle tokens",
+    "corosync_authkey":        "Corosync / Pacemaker cluster auth key references",
+    "drbd_shared_secret":      "DRBD disk replication shared secret values",
+    "sap_hana_credential":     "SAP HANA / NetWeaver system passwords",
+    "sap_sid":                 "SAP System ID (SID) and instance identifiers",
+    "supportconfig_removed":   "Already-masked marker from supportconfig tool",
+}
+
 BUILTIN_RULES = [
     # ── Network ──
     {
@@ -846,15 +935,16 @@ def seed_builtin_rules():
             cursor.execute(
                 """INSERT INTO rules
                    (id, name, category, pattern, flags, strategy, placeholder,
-                    weight, enabled, is_builtin, scope, org_id, use_count, version, created_at, updated_at, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', NULL, 0, 1, ?, ?, 'system')""",
+                    weight, enabled, is_builtin, scope, org_id, use_count, version, created_at, updated_at, created_by, description)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', NULL, 0, 1, ?, ?, 'system', ?)""",
                 (
                     rule["id"], rule["name"], rule["category"],
                     rule["pattern"], rule.get("flags", ""),
                     rule["strategy"], rule["placeholder"],
                     rule["weight"],
                     1 if rule.get("enabled", True) else 0,
-                    now, now
+                    now, now,
+                    RULE_DESCRIPTIONS.get(rule["id"]),
                 )
             )
             inserted += 1

@@ -842,7 +842,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                               <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700" title="Times this rule matched">🔥 {rule.use_count}</span>
                             )}
                           </div>
-                          <p className="mt-2 text-xs text-gray-500 font-mono break-all">{rule.pattern}</p>
+                          <p className="mt-2 text-xs text-gray-500 font-mono break-all">{rule.description || rule.pattern}</p>
                           <p className="mt-1 text-xs text-gray-400">strategy={rule.strategy} · weight={rule.weight} · placeholder={rule.placeholder}</p>
                         </div>
                         <div className="flex flex-wrap gap-2 justify-end">
