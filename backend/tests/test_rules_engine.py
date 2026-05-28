@@ -267,7 +267,7 @@ class TestRuleServiceLayer:
 
     def test_get_enabled_rules_returns_masking_rules(self):
         rules = get_enabled_rules()
-        assert len(rules) >= 79  # supportconfig_removed is disabled by default
+        assert len(rules) >= 60  # 19 SUSE-specific rules disabled by default
         for r in rules:
             assert isinstance(r, MaskingRule)
             assert r.enabled is True

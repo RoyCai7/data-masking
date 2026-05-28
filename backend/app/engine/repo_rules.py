@@ -388,6 +388,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[BSC]",
         "weight": 1,
+        "enabled": False,
     },
     {
         "id": "scc_regcode",
@@ -398,6 +399,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SCC_REGCODE]",
         "weight": 8,
+        "enabled": False,
     },
     {
         "id": "zypper_repo_url",
@@ -408,6 +410,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[REPO_URL_AUTH]",
         "weight": 9,
+        "enabled": False,
     },
     {
         "id": "smt_rmt_url",
@@ -418,6 +421,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SMT_URL]",
         "weight": 4,
+        "enabled": False,
     },
     {
         "id": "suse_connect_key",
@@ -428,6 +432,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[ACTIVATION_KEY]",
         "weight": 8,
+        "enabled": False,
     },
     {
         "id": "autoyast_password",
@@ -438,6 +443,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "<user_password>[HASH]</user_password>",
         "weight": 10,
+        "enabled": False,
     },
     {
         "id": "autoyast_encrypted",
@@ -448,6 +454,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "<encrypted>[MASKED]</encrypted>",
         "weight": 10,
+        "enabled": False,
     },
     {
         "id": "salt_master_key",
@@ -458,6 +465,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SALT_KEY]",
         "weight": 10,
+        "enabled": False,
     },
     {
         "id": "suma_api_token",
@@ -468,6 +476,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SUMA_TOKEN]",
         "weight": 9,
+        "enabled": False,
     },
     {
         "id": "supportconfig_filename",
@@ -478,6 +487,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SUPPORTCONFIG_FILE]",
         "weight": 3,
+        "enabled": False,
     },
     {
         "id": "zypper_cookie",
@@ -488,6 +498,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[ZYPPER_ID]",
         "weight": 4,
+        "enabled": False,
     },
     # ── Linux System / supportconfig patterns ──
     {
@@ -820,6 +831,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[IDENTITY_TOKEN]",
         "weight": 8,
+        "enabled": False,  # Too product-specific; JWT itself is covered by 'jwt' rule
     },
     # ── LDAP / Directory (from supportutils-scrub) ──
     {
@@ -904,6 +916,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[RANCHER_TOKEN]",
         "weight": 10,
+        "enabled": False,
     },
     {
         "id": "rancher_cluster_reg",
@@ -914,6 +927,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[RANCHER_REG_TOKEN]",
         "weight": 9,
+        "enabled": False,
     },
     {
         "id": "corosync_authkey",
@@ -924,6 +938,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[COROSYNC_AUTH]",
         "weight": 7,
+        "enabled": False,
     },
     {
         "id": "drbd_shared_secret",
@@ -944,6 +959,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SAP_PASSWORD]",
         "weight": 10,
+        "enabled": False,
     },
     {
         "id": "sap_sid",
@@ -954,6 +970,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[SAP_SID]",
         "weight": 4,
+        "enabled": False,
     },
     {
         "id": "supportconfig_removed",
@@ -964,7 +981,7 @@ BUILTIN_RULES = [
         "strategy": "placeholder",
         "placeholder": "[ALREADY_MASKED]",
         "weight": 0,
-        "enabled": False,
+        "enabled": False,  # SUSE-specific
     },
     {
         "id": "kube_config_token",

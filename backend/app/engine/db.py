@@ -281,6 +281,24 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    # 15. Disable SUSE-specific built-in rules — they are too product-specific for general use
+    _SUSE_SPECIFIC_IDS = (
+        'bsc_number', 'scc_regcode', 'zypper_repo_url', 'smt_rmt_url',
+        'suse_connect_key', 'autoyast_password', 'autoyast_encrypted',
+        'salt_master_key', 'suma_api_token', 'supportconfig_filename',
+        'zypper_cookie', 'rancher_token', 'rancher_cluster_reg',
+        'corosync_authkey', 'drbd_shared_secret', 'sap_hana_credential',
+        'sap_sid', 'supportconfig_removed', 'identity_tag',
+    )
+    placeholders = ','.join('?' * len(_SUSE_SPECIFIC_IDS))
+    result = conn.execute(
+        f"UPDATE rules SET enabled = 0 WHERE id IN ({placeholders}) AND is_builtin = 1",
+        _SUSE_SPECIFIC_IDS
+    )
+    conn.commit()
+    if result.rowcount > 0:
+        logger.info(f"Migration 15: disabled {result.rowcount} SUSE-specific built-in rules")
+
     logger.info(f"Rules database initialized at {DB_PATH}")
 
 
