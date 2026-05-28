@@ -134,7 +134,7 @@ export default function Header() {
       </div>
 
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
-      {showAdminConsole && <AdminConsole onClose={() => setShowAdminConsole(false)} />}
+      {showAdminConsole && <AdminConsole onClose={() => { setShowAdminConsole(false); window.dispatchEvent(new Event('auth-state-changed')); }} />}
       {showSuggestRule && <SuggestRule onClose={() => setShowSuggestRule(false)} />}
       {showRuleList && <RuleList onClose={() => setShowRuleList(false)} />}
       {showMyOrg && <MyOrg onClose={() => setShowMyOrg(false)} />}
