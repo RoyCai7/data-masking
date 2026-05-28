@@ -246,6 +246,25 @@ def init_db():
     except Exception as e:
         logger.warning(f"Migration 11: description backfill failed: {e}")
 
+    # 12. Backfill descriptions on forked org rules from their parent system rules
+    try:
+        conn.execute(
+            """
+            UPDATE rules SET description = (
+                SELECT s.description FROM rules s
+                WHERE s.id = SUBSTR(rules.id, INSTR(rules.id, '__') + 2)
+                  AND s.scope = 'system'
+            )
+            WHERE scope = 'org'
+              AND INSTR(id, '__') > 0
+              AND (description IS NULL OR description = '')
+            """
+        )
+        conn.commit()
+        logger.info("Migration 12: backfilled descriptions on forked org rules")
+    except Exception as e:
+        logger.warning(f"Migration 12: forked rule description backfill failed: {e}")
+
     logger.info(f"Rules database initialized at {DB_PATH}")
 
 

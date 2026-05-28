@@ -1467,13 +1467,13 @@ def fork_system_rules(org_id: str, forked_by: str = "system") -> int:
             """
             INSERT INTO rules
                 (id, name, category, pattern, flags, strategy, placeholder, weight,
-                 enabled, is_builtin, scope, org_id, created_at, updated_at, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'org', ?, ?, ?, ?)
+                 enabled, is_builtin, scope, org_id, created_at, updated_at, created_by, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'org', ?, ?, ?, ?, ?)
             """,
             (
                 new_id, r["name"], r["category"], r["pattern"],
                 r.get("flags", ""), r["strategy"], r["placeholder"], r["weight"],
-                r["enabled"], org_id, now, now, forked_by,
+                r["enabled"], org_id, now, now, forked_by, r.get("description"),
             ),
         )
         copied += 1
