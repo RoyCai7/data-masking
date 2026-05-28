@@ -621,7 +621,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
           </AnimatePresence>
         </div>
 
-        <div className="flex-1 overflow-auto px-6 pb-6">
+        <div className="flex-1 overflow-auto px-6 py-6 bg-gray-50">
           {!isReady ? (
             <div className="h-full flex items-center justify-center text-gray-500">
               {loading ? 'Loading admin console…' : 'Admin role required'}
