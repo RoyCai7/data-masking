@@ -915,9 +915,18 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                                 : '↑ To Org'}
                             </button>
                           )}
-                          {!rule.is_builtin && (
+                          {/* Admin can delete any rule in System Rules tab (built-in = soft delete) */}
+                          {(activeTab === 'system_rules' && isAdmin && adminMode) ? (
+                            <button
+                              onClick={() => handleDeleteRule(rule.id)}
+                              className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50"
+                              title={rule.is_builtin ? 'Built-in rules will be soft-deleted (hidden but not reseeded)' : 'Delete rule permanently'}
+                            >
+                              Delete
+                            </button>
+                          ) : (!rule.is_builtin && (
                             <button onClick={() => handleDeleteRule(rule.id)} className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50">Delete</button>
-                          )}
+                          ))}
                         </div>
                       </div>
                     </div>

@@ -129,9 +129,14 @@ class TestRuleCRUD:
         assert resp2.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_delete_builtin_fails(self, client):
+    async def test_delete_builtin_soft_deletes(self, client):
+        # Admin can delete built-in rules — soft-delete (admin_deleted=1), hidden from list
         resp = await client.delete("/api/v1/rules/ipv4")
-        assert resp.status_code == 400  # Built-in rules can't be deleted
+        assert resp.status_code == 200
+        # Rule should no longer appear in list
+        list_resp = await client.get("/api/v1/rules")
+        ids = [r["id"] for r in list_resp.json()["rules"]]
+        assert "ipv4" not in ids
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

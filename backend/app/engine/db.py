@@ -265,6 +265,14 @@ def init_db():
     except Exception as e:
         logger.warning(f"Migration 12: forked rule description backfill failed: {e}")
 
+    # 13. Add admin_deleted column — allows admin to permanently suppress built-in rules
+    try:
+        conn.execute("ALTER TABLE rules ADD COLUMN admin_deleted INTEGER DEFAULT 0")
+        conn.commit()
+        logger.info("Migration 13: added 'admin_deleted' column to rules")
+    except Exception:
+        pass  # column already exists
+
     logger.info(f"Rules database initialized at {DB_PATH}")
 
 

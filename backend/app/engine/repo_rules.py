@@ -930,24 +930,27 @@ def seed_builtin_rules():
 
     inserted = 0
     for rule in BUILTIN_RULES:
-        cursor.execute("SELECT id FROM rules WHERE id = ?", (rule["id"],))
-        if cursor.fetchone() is None:
-            cursor.execute(
-                """INSERT INTO rules
-                   (id, name, category, pattern, flags, strategy, placeholder,
-                    weight, enabled, is_builtin, scope, org_id, use_count, version, created_at, updated_at, created_by, description)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', NULL, 0, 1, ?, ?, 'system', ?)""",
-                (
-                    rule["id"], rule["name"], rule["category"],
-                    rule["pattern"], rule.get("flags", ""),
-                    rule["strategy"], rule["placeholder"],
-                    rule["weight"],
-                    1 if rule.get("enabled", True) else 0,
-                    now, now,
-                    RULE_DESCRIPTIONS.get(rule["id"]),
-                )
+        cursor.execute("SELECT id, admin_deleted FROM rules WHERE id = ?", (rule["id"],))
+        existing = cursor.fetchone()
+        if existing is not None:
+            # Rule already exists — skip re-seeding (respects admin_deleted=1 too)
+            continue
+        cursor.execute(
+            """INSERT INTO rules
+               (id, name, category, pattern, flags, strategy, placeholder,
+                weight, enabled, is_builtin, scope, org_id, use_count, version, created_at, updated_at, created_by, description)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'system', NULL, 0, 1, ?, ?, 'system', ?)""",
+            (
+                rule["id"], rule["name"], rule["category"],
+                rule["pattern"], rule.get("flags", ""),
+                rule["strategy"], rule["placeholder"],
+                rule["weight"],
+                1 if rule.get("enabled", True) else 0,
+                now, now,
+                RULE_DESCRIPTIONS.get(rule["id"]),
             )
-            inserted += 1
+        )
+        inserted += 1
 
     conn.commit()
     logger.info(f"Seeded {inserted} built-in rules (total built-in: {len(BUILTIN_RULES)})")
@@ -1030,7 +1033,7 @@ def list_rules(
     - anonymous: sees only system rules
     """
     conn = _get_conn()
-    sql = "SELECT * FROM rules WHERE 1=1"
+    sql = "SELECT * FROM rules WHERE 1=1 AND (admin_deleted IS NULL OR admin_deleted = 0)"
     params: list = []
 
     if category:
@@ -1275,17 +1278,24 @@ def increment_use_count(rule_ids: List[str]) -> None:
 
 def delete_rule(rule_id: str, changed_by: str = "admin") -> bool:
     """
-    Delete a custom rule. Built-in rules cannot be deleted (use toggle instead).
+    Delete a rule.
+    - Built-in rules: admin can mark as admin_deleted (suppresses re-seeding + listing).
+    - Custom rules: physically deleted from DB.
     Returns True if deleted.
     """
     old = get_rule(rule_id)
     if not old:
         raise ValueError(f"Rule '{rule_id}' not found")
-    if old["is_builtin"]:
-        raise ValueError(f"Built-in rule '{rule_id}' cannot be deleted. Use toggle to disable it.")
 
     conn = _get_conn()
-    conn.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
+    if old["is_builtin"]:
+        # Soft-delete: mark admin_deleted so seed won't re-insert and list_rules hides it
+        conn.execute(
+            "UPDATE rules SET admin_deleted = 1, enabled = 0, updated_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), rule_id)
+        )
+    else:
+        conn.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
     conn.commit()
 
     _log_change(rule_id, "delete", old, None, changed_by)
