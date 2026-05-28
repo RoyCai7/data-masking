@@ -33,7 +33,11 @@ def add_key(name: str, role: str = "user", expires_days: int = 365,
     """
     Create a new API key.
     Stores only the SHA-256 hash; returns the plaintext key ONCE.
+    Admin keys are always org-less: org_id is forced to 'default'.
     """
+    # Admins are platform-level — forced to 'default' (meaning no org).
+    if role == "admin":
+        org_id = "default"
     raw_key = generate_api_key()
     key_hash = _hash_key(raw_key)
     key_prefix = raw_key[:8]

@@ -88,7 +88,11 @@ async def list_api_keys(request: Request):
 async def update_api_key(body: UpdateKeyRequest, request: Request):
     """Update mutable fields (org_id, role) of an existing key. Requires admin role."""
     require_admin(request)
-    result = update_key_by_id(body.key_id, org_id=body.org_id, role=body.role)
+    # Admins are platform-level — force org to 'default' if promoting to admin role.
+    effective_org = body.org_id
+    if body.role == "admin":
+        effective_org = "default"
+    result = update_key_by_id(body.key_id, org_id=effective_org, role=body.role)
     if not result:
         raise HTTPException(status_code=404, detail="API key not found")
     return {"message": "API key updated",
@@ -120,14 +124,20 @@ async def reveal_api_key(key_id: int, request: Request):
 async def get_my_key(request: Request):
     """Get the current user's key information (any authenticated user)."""
     auth_user = require_auth(request)
-    from app.engine.repository import is_org_owner
+    role = auth_user.get("role", "user")
     org_id = auth_user.get("org_id") or "default"
     key_prefix = auth_user.get("key_prefix", "")
+    # Admins are platform-level and cannot be org owners.
+    if role == "admin":
+        org_owner = False
+    else:
+        from app.engine.repository import is_org_owner
+        org_owner = is_org_owner(org_id, key_prefix)
     return {
         "name": auth_user.get("name"),
-        "role": auth_user.get("role", "user"),
+        "role": role,
         "org_id": org_id,
-        "is_org_owner": is_org_owner(org_id, key_prefix),
+        "is_org_owner": org_owner,
         "created_at": auth_user.get("created_at"),
         "expires_at": auth_user.get("expires_at"),
         "key_preview": key_prefix + "...",

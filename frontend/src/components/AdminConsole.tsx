@@ -83,8 +83,6 @@ const orgOwnerTabs: Array<{ id: AdminTab; label: string }> = [
 export default function AdminConsole({ onClose }: AdminConsoleProps) {
   const dialogRef = useModalA11y(onClose);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isOrgOwner, setIsOrgOwner] = useState(false);
-  const [adminMode, setAdminMode] = useState(true); // only relevant when both admin+org_owner
   const [activeTab, setActiveTab] = useState<AdminTab>('org_rules');
   const [isReady, setIsReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -248,15 +246,11 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
           throw new Error('Admin or org owner role required');
         }
         setIsAdmin(admin);
-        setIsOrgOwner(orgOwner);
-        if (orgOwner) {
-          // Default to org owner mode (even if also admin)
-          setAdminMode(false);
+        if (admin) {
+          setActiveTab('keys');
+        } else {
           setActiveTab('org_rules');
           loadOrgCustomRuleSet();
-        } else if (admin) {
-          setAdminMode(true);
-          setActiveTab('keys');
         }
         setIsReady(true);
         if (admin) await Promise.all([loadKeys(), loadOrgs()]);
@@ -551,38 +545,18 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
               <ShieldCheckIcon className="w-6 h-6 text-suse-green" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{isAdmin && adminMode ? 'Admin Console' : 'Manage Org Rules'}</h2>
-              <p className="text-sm text-gray-500">{isAdmin && adminMode ? 'Manage keys, rules, suggestions, and audit history' : 'Create and manage rules for your organisation'}</p>
+              <h2 className="text-xl font-bold text-gray-900">{isAdmin ? 'Admin Console' : 'Manage Org Rules'}</h2>
+              <p className="text-sm text-gray-500">{isAdmin ? 'Manage keys, rules, suggestions, and audit history' : 'Create and manage rules for your organisation'}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 transition-colors">
             <XMarkIcon className="w-5 h-5 text-gray-500" />
           </button>
         </div>
-        {/* Mode switcher — only shown when user is both admin and org owner */}
-        {isAdmin && isOrgOwner && (
-          <div className="px-6 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
-            <span className="text-xs text-amber-700">You are both an <strong>admin</strong> and an <strong>org owner</strong></span>
-            <div className="flex rounded-lg overflow-hidden border border-amber-200 text-xs font-medium">
-              <button
-                onClick={() => { setAdminMode(true); setActiveTab('keys'); }}
-                className={`px-3 py-1.5 transition-colors ${adminMode ? 'bg-amber-500 text-white' : 'text-amber-700 hover:bg-amber-100'}`}
-              >
-                🛡 Admin mode
-              </button>
-              <button
-                onClick={() => { setAdminMode(false); setActiveTab('org_rules'); loadOrgCustomRuleSet(); }}
-                className={`px-3 py-1.5 transition-colors ${!adminMode ? 'bg-amber-500 text-white' : 'text-amber-700 hover:bg-amber-100'}`}
-              >
-                🏢 Org owner mode
-              </button>
-            </div>
-          </div>
-        )}
 
         <div className="px-6 pt-4 flex items-center justify-between gap-4 border-b border-gray-100">
           <div className="flex gap-2 overflow-x-auto pb-4">
-            {(isAdmin && adminMode ? adminTabs : orgOwnerTabs).map((tab) => (
+            {(isAdmin ? adminTabs : orgOwnerTabs).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -642,9 +616,14 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                   </select>
                   <input type="number" min={1} value={newKeyExpiry} onChange={(e: ChangeEvent<HTMLInputElement>) => setNewKeyExpiry(Number(e.target.value) || 365)} className="px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
                 </div>
-                <select value={newKeyOrg} onChange={(e: ChangeEvent<HTMLSelectElement>) => setNewKeyOrg(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
-                  <option value="default">🏠 default (no org)</option>
-                  {orgs.filter(o => o.id !== 'default').map(o => (
+                <select
+                  value={newKeyRole === 'admin' ? 'default' : newKeyOrg}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setNewKeyOrg(e.target.value)}
+                  disabled={newKeyRole === 'admin'}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="default">{newKeyRole === 'admin' ? '— not applicable for admin —' : '🏠 default (no org)'}</option>
+                  {newKeyRole !== 'admin' && orgs.filter(o => o.id !== 'default').map(o => (
                     <option key={o.id} value={o.id}>🏢 {o.name} ({o.id})</option>
                   ))}
                 </select>
@@ -922,7 +901,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                             </button>
                           )}
                           {/* Admin can delete any rule in System Rules tab (built-in = soft delete) */}
-                          {(activeTab === 'system_rules' && isAdmin && adminMode) ? (
+                          {(activeTab === 'system_rules' && isAdmin) ? (
                             <button
                               onClick={() => handleDeleteRule(rule.id)}
                               className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50"
