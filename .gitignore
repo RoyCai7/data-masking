@@ -54,3 +54,4 @@ apply_fixes.py
 # Playwright test artifacts
 frontend/playwright-report/
 frontend/test-results/
+autoinst-log.txt
