@@ -853,6 +853,76 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                   <h3 className="font-semibold text-gray-900">Rules</h3>
                   <input value={ruleFilter} onChange={(e: ChangeEvent<HTMLInputElement>) => setRuleFilter(e.target.value)} placeholder="Filter by id, name, category, pattern" className="w-full md:w-80 px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900" />
                 </div>
+                {/* Rules list — grouped by scope when in org_rules tab */}
+                {activeTab === 'org_rules' ? (() => {
+                  const orgRules = filteredRules.filter((r: RuleDetail) => r.scope === 'org');
+                  const privateRules = filteredRules.filter((r: RuleDetail) => r.scope === 'private');
+                  const renderRule = (rule: RuleDetail) => (
+                    <div key={rule.id} className="px-5 py-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium text-gray-900">{rule.name}</span>
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700 font-mono">{rule.id}</span>
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">{rule.category}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-xs ${rule.enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{rule.enabled ? 'enabled' : 'disabled'}</span>
+                            {rule.is_builtin ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">built-in</span> : <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">custom</span>}
+                            {(rule.use_count ?? 0) > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700" title="Times this rule matched">🔥 {rule.use_count}</span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-xs text-gray-500 font-mono break-all">{rule.description || rule.pattern}</p>
+                          {rule.example && (
+                            <p className="mt-1 text-xs font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-2 py-0.5 inline-block max-w-full truncate" title={rule.example}>
+                              e.g.&nbsp;{rule.example}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-gray-400">strategy={rule.strategy} · weight={rule.weight} · placeholder={rule.placeholder}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-end">
+                          <button onClick={() => handleEditRule(rule)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-50">Edit</button>
+                          <button onClick={() => handleToggleRule(rule.id)} className="px-3 py-2 rounded-lg border border-amber-200 text-sm text-amber-700 hover:bg-amber-50">Toggle</button>
+                          {!rule.is_builtin && (
+                            <button
+                              onClick={() => handlePromoteRule(rule.id, rule.scope ?? 'private')}
+                              className={rule.scope === 'org'
+                                ? 'px-3 py-2 rounded-lg border border-teal-200 text-sm text-teal-700 hover:bg-teal-50'
+                                : 'px-3 py-2 rounded-lg border border-blue-200 text-sm text-blue-700 hover:bg-blue-50'}
+                              title={rule.scope === 'private' ? 'Promote to org scope so all org members can use it' : 'Demote to private'}
+                            >
+                              {rule.scope === 'org' ? '↓ To Private' : '↑ To Org'}
+                            </button>
+                          )}
+                          {!rule.is_builtin && (
+                            <button onClick={() => handleDeleteRule(rule.id)} className="px-3 py-2 rounded-lg border border-red-200 text-sm text-red-600 hover:bg-red-50">Delete</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                  return (
+                    <div className="max-h-[60vh] overflow-auto">
+                      {/* Org-shared rules */}
+                      <div className="px-5 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+                        <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">🏢 Org Rules</span>
+                        <span className="text-xs text-blue-500">({orgRules.length}) — visible to all org members</span>
+                      </div>
+                      {orgRules.length === 0
+                        ? <p className="px-5 py-4 text-sm text-gray-400 italic">No org-scoped rules yet. Promote a private rule or create one above.</p>
+                        : <div className="divide-y divide-gray-100">{orgRules.map(renderRule)}</div>
+                      }
+                      {/* Private rules */}
+                      <div className="px-5 py-2 bg-slate-50 border-y border-slate-100 flex items-center gap-2 mt-2">
+                        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">🔒 My Private Rules</span>
+                        <span className="text-xs text-slate-400">({privateRules.length}) — only visible to you · promote to share with org</span>
+                      </div>
+                      {privateRules.length === 0
+                        ? <p className="px-5 py-4 text-sm text-gray-400 italic">No private rules.</p>
+                        : <div className="divide-y divide-gray-100">{privateRules.map(renderRule)}</div>
+                      }
+                    </div>
+                  );
+                })() : (
                 <div className="divide-y divide-gray-100 max-h-[60vh] overflow-auto">
                   {filteredRules.map((rule) => (
                     <div key={rule.id} className="px-5 py-4">
@@ -917,6 +987,7 @@ export default function AdminConsole({ onClose }: AdminConsoleProps) {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             </div>
           ) : activeTab === 'orgs' ? (
