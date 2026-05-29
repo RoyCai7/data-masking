@@ -163,13 +163,20 @@ def _require_rule_write_access(request: Request, rule: dict):
                                 detail="Only an org owner can modify org-scoped rules")
         return
 
-    # private rule — only the creator may modify it
+    # private rule — creator or org owner of the creator's org may modify it
     if scope == "private":
         creator_prefix = rule.get("creator_key_prefix")
-        if not creator_prefix or ctx["key_prefix"] != creator_prefix:
-            raise HTTPException(status_code=403,
-                                detail="Only the rule creator can modify their private rules")
-        return
+        if creator_prefix and ctx["key_prefix"] == creator_prefix:
+            return
+        # Allow org owner of the org the creator belongs to
+        if creator_prefix:
+            from app.engine.repo_keys import db_get_org_by_key_prefix
+            from app.engine.repo_orgs import is_org_owner
+            creator_org = db_get_org_by_key_prefix(creator_prefix)
+            if creator_org and is_org_owner(creator_org, ctx["key_prefix"]):
+                return
+        raise HTTPException(status_code=403,
+                            detail="Only the rule creator or their org owner can modify private rules")
 
     raise HTTPException(status_code=403, detail="Cannot determine rule ownership")
 

@@ -44,6 +44,15 @@ def db_get_key_by_hash(key_hash: str) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def db_get_org_by_key_prefix(key_prefix: str) -> Optional[str]:
+    """Return the org_id for a key identified by its prefix, or None."""
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT org_id FROM api_keys WHERE key_prefix = ?", (key_prefix,)
+    ).fetchone()
+    return row["org_id"] if row else None
+
+
 def db_get_all_keys() -> List[Dict[str, Any]]:
     """Return all API key records (without hash), including DB id."""
     conn = _get_conn()
