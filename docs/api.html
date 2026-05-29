@@ -161,6 +161,9 @@
   <div class="nav-section">Tools</div>
   <a class="nav-item" onclick="scrollTo('tools-mask')">mask_api.sh</a>
   <a class="nav-item" onclick="scrollTo('tools-llm')">llm_add_rule.py</a>
+
+  <div class="nav-section">Demo</div>
+  <a class="nav-item" onclick="scrollTo('demo')">🎬 Live Demo Guide</a>
 </nav>
 
 <!-- ─── Main ────────────────────────────────────────────────── -->
@@ -1060,6 +1063,161 @@ python3 llm_add_rule.py \
       </div>
     </div>
     <div class="note">💡 <strong>Best practice:</strong> always dry-run first (<code>--dry-run</code>) to verify the LLM output, then re-run without it. Use the default suggestion flow rather than <code>--create</code> — having a second set of eyes on a regex prevents accidental over-masking or missed patterns.</div>
+  </section>
+
+  <!-- Demo Guide -->
+  <section id="demo">
+    <div class="section-title">🎬 Live Demo Guide</div>
+    <div class="section-desc">Step-by-step script for a 10-minute live demo targeting business / non-technical audiences. Goal: show the problem, show the solution, show AI-assisted rule creation.</div>
+
+    <!-- Story setup -->
+    <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:18px 20px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px">🎯 The Story (tell this first)</div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.8">
+        "Imagine your support team exports a batch of customer tickets to share with a partner. Inside those files: customer passwords, SSH keys, database credentials, credit card numbers — mixed in with legitimate log data. How do you make sure none of that leaks before the file leaves the building?"
+      </div>
+      <div style="font-size:13px;color:#94a3b8;margin-top:8px;line-height:1.8">
+        "This is what the Data Masking Service solves — automatically, in seconds, with a full audit trail."
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden">
+      <div style="background:rgba(48,186,120,.1);padding:12px 18px;display:flex;align-items:center;gap:12px">
+        <div style="background:var(--green);color:#000;font-weight:800;font-size:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">Show the raw file <span style="color:var(--muted);font-weight:400;font-size:12px">— 1 min</span></div>
+          <div style="color:var(--muted);font-size:12px">Open <code>demo/support_ticket_export.txt</code> in a text editor</div>
+        </div>
+      </div>
+      <div style="padding:14px 18px">
+        <div style="font-size:12px;color:#94a3b8;line-height:1.8"><strong style="color:var(--text)">Say:</strong> "This is a realistic support ticket export. Scroll through it — notice the passwords, SSH keys, AWS credentials, a credit card number, internal IPs. This file cannot be shared as-is."</div>
+        <div style="margin-top:10px;font-size:12px;color:#94a3b8"><strong style="color:var(--text)">Point out:</strong></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">Passwords</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">SSH private key</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">AWS credentials</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">Credit card</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">JWT token</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">DB connection string</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">Internal IPs</span>
+          <span style="background:rgba(239,68,68,.12);color:#ef4444;padding:2px 8px;border-radius:4px;font-size:11px">Email addresses</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden">
+      <div style="background:rgba(48,186,120,.1);padding:12px 18px;display:flex;align-items:center;gap:12px">
+        <div style="background:var(--green);color:#000;font-weight:800;font-size:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">Upload and mask via the Web UI <span style="color:var(--muted);font-weight:400;font-size:12px">— 2 min</span></div>
+          <div style="color:var(--muted);font-size:12px">Open <code>http://&lt;server-address&gt;</code> in the browser</div>
+        </div>
+      </div>
+      <div style="padding:14px 18px">
+        <div style="font-size:12px;color:#94a3b8;line-height:1.8"><strong style="color:var(--text)">Say:</strong> "The web interface is what most users will see. I just drag and drop the file."</div>
+        <ol style="font-size:12px;color:#94a3b8;line-height:2;padding-left:18px;margin-top:8px">
+          <li>Drag <code>support_ticket_export.txt</code> onto the upload area (or click to browse)</li>
+          <li>Click <strong style="color:var(--text)">Upload &amp; Mask</strong> — watch the progress bar</li>
+          <li>When complete: click <strong style="color:var(--text)">Download Masked File</strong></li>
+          <li>Open the downloaded file — show the before/after side by side</li>
+        </ol>
+        <div style="background:rgba(48,186,120,.06);border-left:3px solid var(--green);padding:10px 14px;border-radius:0 6px 6px 0;font-size:12px;color:#94a3b8;margin-top:10px">
+          <strong style="color:var(--text)">Say:</strong> "Every credential, key, email, and IP is replaced with a clear label — <code>[PASSWORD]</code>, <code>[AWS_ACCESS_KEY]</code>, <code>[EMAIL]</code> — while all the other content stays intact. The file is readable, just safe."
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden">
+      <div style="background:rgba(48,186,120,.1);padding:12px 18px;display:flex;align-items:center;gap:12px">
+        <div style="background:var(--green);color:#000;font-weight:800;font-size:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">Show the risk report <span style="color:var(--muted);font-weight:400;font-size:12px">— 1 min</span></div>
+          <div style="color:var(--muted);font-size:12px">Click the Report tab on the completed task</div>
+        </div>
+      </div>
+      <div style="padding:14px 18px">
+        <div style="font-size:12px;color:#94a3b8;line-height:1.8"><strong style="color:var(--text)">Say:</strong> "Every masking job produces a full audit report — risk score, total matches, breakdown by rule type. This becomes your compliance evidence — you can prove exactly what was found and masked."</div>
+        <div style="margin-top:8px;font-size:12px;color:#94a3b8"><strong style="color:var(--text)">Highlight:</strong> the <strong>Risk Score</strong> number, the per-rule match count table, and the file size + line count.</div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden">
+      <div style="background:rgba(48,186,120,.1);padding:12px 18px;display:flex;align-items:center;gap:12px">
+        <div style="background:var(--green);color:#000;font-weight:800;font-size:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">4</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">Show rule management <span style="color:var(--muted);font-weight:400;font-size:12px">— 2 min</span></div>
+          <div style="color:var(--muted);font-size:12px">Click <strong>Rules</strong> in the header</div>
+        </div>
+      </div>
+      <div style="padding:14px 18px">
+        <div style="font-size:12px;color:#94a3b8;line-height:1.8"><strong style="color:var(--text)">Say:</strong> "The system ships with built-in rules for common patterns — emails, passwords, keys, IPs, credit cards. But every organisation has unique data. For example, SUSE has registration codes in the format <code>Regcode-XXXXX</code> — that's not in any generic ruleset."</div>
+        <div style="margin-top:8px;font-size:12px;color:#94a3b8">
+          <strong style="color:var(--text)">Show:</strong> the Rules list — filter by category, toggle a rule on/off to demonstrate live control.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden">
+      <div style="background:rgba(245,158,11,.12);padding:12px 18px;display:flex;align-items:center;gap:12px">
+        <div style="background:#f59e0b;color:#000;font-weight:800;font-size:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">5</div>
+        <div>
+          <div style="font-weight:700;font-size:14px">✨ AI rule creation — the wow moment <span style="color:var(--muted);font-weight:400;font-size:12px">— 3 min</span></div>
+          <div style="color:var(--muted);font-size:12px">Open a terminal — run <code>llm_add_rule.py</code></div>
+        </div>
+      </div>
+      <div style="padding:14px 18px">
+        <div style="font-size:12px;color:#94a3b8;line-height:1.8"><strong style="color:var(--text)">Say:</strong> "Creating a custom rule used to mean writing regex by hand — which most people can't do. Now you just describe what you want in plain English."</div>
+        <div class="code-block" style="margin-top:10px"><span class="c"># Live: describe the pattern in plain English</span>
+python3 llm_add_rule.py \
+  -k dms_your_key \
+  -d <span class="s">"SUSE registration code in the format Regcode-XXXXX where X is uppercase letter or digit"</span> \
+  -r <span class="s">"Needed for support ticket export masking"</span></div>
+        <div style="margin-top:10px;font-size:12px;color:#94a3b8;line-height:1.8">
+          <strong style="color:var(--text)">While it runs, say:</strong> "The local AI model reads the description, generates a regex, tests it against examples — all on-premise, nothing leaves the server."
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.8">
+          <strong style="color:var(--text)">When output appears:</strong> "It generated the pattern, showed what it matches and what it doesn't, and submitted it for review — one command."
+        </div>
+        <div style="margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.8">
+          <strong style="color:var(--text)">Then in Admin Console:</strong> go to Suggestions → approve it → re-run the masking on the same file — the <code>Regcode-ABCDE</code> values are now masked too.
+        </div>
+      </div>
+    </div>
+
+    <!-- Closing -->
+    <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.25);border-radius:10px;padding:18px 20px;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:8px">🏁 Closing (30 sec)</div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.8">
+        "So the full cycle is: upload, mask, download, report — in under 30 seconds. Rules are centrally managed with role-based access. New patterns can be added by anyone via AI suggestion, reviewed and approved by admins. Everything is logged and auditable."
+      </div>
+    </div>
+
+    <!-- Cheat sheet -->
+    <div style="margin-top:24px">
+      <div class="section-title" style="font-size:16px;margin-bottom:12px">📋 Demo Cheat Sheet</div>
+      <table>
+        <tr><th>What to have ready</th><th>Detail</th></tr>
+        <tr><td class="param-name">Demo file</td><td class="param-desc"><code>demo/support_ticket_export.txt</code> — already on your laptop</td></tr>
+        <tr><td class="param-name">Browser tab</td><td class="param-desc">http://&lt;server-address&gt; logged in with your API key</td></tr>
+        <tr><td class="param-name">Terminal</td><td class="param-desc">Open, cd to project folder, API key in shell variable: <code>export K=dms_your_key</code></td></tr>
+        <tr><td class="param-name">Fallback</td><td class="param-desc">If LLM is slow, use <code>--dry-run</code> first to show the payload, then submit</td></tr>
+        <tr><td class="param-name">Whitelist demo</td><td class="param-desc">Add <code>-w "10.44.12.11"</code> to show targeted exclusion of a specific IP</td></tr>
+      </table>
+
+      <table style="margin-top:12px">
+        <tr><th>Likely question</th><th>Answer</th></tr>
+        <tr><td class="param-desc">Does it work on archives / zip files?</td><td class="param-desc">Yes — upload a <code>.tar.gz</code> or <code>.zip</code>, every text file inside is masked, archive is repacked</td></tr>
+        <tr><td class="param-desc">Is data sent to the cloud?</td><td class="param-desc">No — everything runs on-premise; the LLM model runs locally via Ollama</td></tr>
+        <tr><td class="param-desc">Who controls which rules are active?</td><td class="param-desc">Admins manage system rules; org owners manage org rules; users can suggest, not create</td></tr>
+        <tr><td class="param-desc">How do we add custom patterns?</td><td class="param-desc">Describe it in plain English with <code>llm_add_rule.py</code>, or write regex manually in the Admin Console</td></tr>
+        <tr><td class="param-desc">Can we integrate this into CI/CD?</td><td class="param-desc">Yes — REST API; <code>mask_api.sh</code> can be called from any pipeline script</td></tr>
+      </table>
+    </div>
   </section>
 
   <div style="border-top:1px solid var(--border);padding-top:24px;color:var(--muted);font-size:11px;text-align:center">
