@@ -157,6 +157,10 @@
 
   <div class="nav-section">System</div>
   <a class="nav-item" onclick="scrollTo('status')">Status</a>
+
+  <div class="nav-section">Tools</div>
+  <a class="nav-item" onclick="scrollTo('tools-mask')">mask_api.sh</a>
+  <a class="nav-item" onclick="scrollTo('tools-llm')">llm_add_rule.py</a>
 </nav>
 
 <!-- ─── Main ────────────────────────────────────────────────── -->
@@ -938,6 +942,124 @@
         <p style="color:var(--muted);font-size:12px">Returns a new session UUID for file isolation. Sessions are auto-created on first upload; this endpoint is for pre-allocating one.</p>
       </div>
     </div>
+  </section>
+
+  <!-- mask_api.sh -->
+  <section id="tools-mask">
+    <div class="section-title">Tools — mask_api.sh</div>
+    <div class="section-desc">A self-contained Bash script that runs the complete upload → poll → download → report workflow in one command. Requires <code>curl</code>, <code>python3</code>, and <code>uuidgen</code>.</div>
+
+    <div class="params-title" style="margin-top:0">Options</div>
+    <table>
+      <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+      <tr><td class="param-name">-f &lt;file&gt;</td><td class="param-req">✔</td><td class="param-desc">File to upload and mask (plain text or archive)</td></tr>
+      <tr><td class="param-name">-k &lt;api_key&gt;</td><td class="param-req">✔</td><td class="param-desc">Your API key</td></tr>
+      <tr><td class="param-name">-s &lt;server&gt;</td><td></td><td class="param-desc">Server base URL (default: http://&lt;server-address&gt;)</td></tr>
+      <tr><td class="param-name">-w &lt;whitelist&gt;</td><td></td><td class="param-desc">Comma-separated values to skip masking, e.g. <code>localhost,127.0.0.1</code></td></tr>
+      <tr><td class="param-name">-i &lt;session_id&gt;</td><td></td><td class="param-desc">Reuse an existing session UUID (auto-generated if omitted)</td></tr>
+    </table>
+
+    <div class="params-title">Examples</div>
+    <div class="code-block"><span class="c"># Basic — mask a single file</span>
+./mask_api.sh -f secrets.log -k dms_your_key
+
+<span class="c"># Skip known-safe values from being masked</span>
+./mask_api.sh -f app.log -k dms_your_key -w <span class="s">"localhost,127.0.0.1,internal.suse.com"</span>
+
+<span class="c"># Point at a different server</span>
+./mask_api.sh -f data.txt -k dms_your_key -s http://other-server:8080
+
+<span class="c"># Group multiple files under one session (reuse session_id)</span>
+./mask_api.sh -f file1.log -k dms_your_key -i <span class="s">"550e8400-e29b-41d4-a716-446655440000"</span>
+./mask_api.sh -f file2.log -k dms_your_key -i <span class="s">"550e8400-e29b-41d4-a716-446655440000"</span></div>
+
+    <div class="params-title">What it does</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:8px;margin-bottom:8px">
+      <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.2);border-radius:8px;padding:12px;font-size:12px">
+        <div style="font-weight:700;color:var(--green);margin-bottom:4px">[1/4] Upload</div>
+        <div style="color:var(--muted)">POST /mask — captures task_id and session_id from response</div>
+      </div>
+      <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.2);border-radius:8px;padding:12px;font-size:12px">
+        <div style="font-weight:700;color:var(--green);margin-bottom:4px">[2/4] Poll</div>
+        <div style="color:var(--muted)">Loops GET /task/{id} every second until status = completed or failed</div>
+      </div>
+      <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.2);border-radius:8px;padding:12px;font-size:12px">
+        <div style="font-weight:700;color:var(--green);margin-bottom:4px">[3/4] Download</div>
+        <div style="color:var(--muted)">GET /download/{id} — saves masked file preserving original filename</div>
+      </div>
+      <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.2);border-radius:8px;padding:12px;font-size:12px">
+        <div style="font-weight:700;color:var(--green);margin-bottom:4px">[4/4] Report</div>
+        <div style="color:var(--muted)">GET /report/{id} — prints full JSON with risk score and per-rule breakdown</div>
+      </div>
+    </div>
+    <div class="note">💡 <strong>Best practice:</strong> use <code>-w</code> to whitelist known-safe tokens (hostnames, internal IPs, product names) before running — this avoids false positives and keeps reports focused on real sensitive data.</div>
+  </section>
+
+  <!-- llm_add_rule.py -->
+  <section id="tools-llm">
+    <div class="section-title">Tools — llm_add_rule.py</div>
+    <div class="section-desc">Describe a sensitive data pattern in plain English — the script asks the local LLM to generate a regex, then submits it as a <strong>suggestion</strong> for review (default) or creates it directly. Requires Python 3.7+, no extra packages.</div>
+
+    <div class="params-title" style="margin-top:0">Options</div>
+    <table>
+      <tr><th>Flag</th><th>Required</th><th>Description</th></tr>
+      <tr><td class="param-name">-k / --key</td><td class="param-req">✔</td><td class="param-desc">API key</td></tr>
+      <tr><td class="param-name">-d / --desc</td><td class="param-req">✔</td><td class="param-desc">Natural language description of what to mask</td></tr>
+      <tr><td class="param-name">-c / --context</td><td></td><td class="param-desc">Extra hint for the LLM, e.g. an example value format</td></tr>
+      <tr><td class="param-name">-r / --reason</td><td></td><td class="param-desc">Message shown to the reviewer (auto-generated if omitted)</td></tr>
+      <tr><td class="param-name">-s / --server</td><td></td><td class="param-desc">Server URL (default: http://&lt;server-address&gt;)</td></tr>
+      <tr><td class="param-name">-m / --model</td><td></td><td class="param-desc">Ollama model name (default: qwen2.5-coder:7b)</td></tr>
+      <tr><td class="param-name">-p / --provider</td><td></td><td class="param-desc"><code>ollama</code> (default) | <code>opencode</code></td></tr>
+      <tr><td class="param-name">--scope</td><td></td><td class="param-desc">system | org | private (default: private)</td></tr>
+      <tr><td class="param-name">--strategy</td><td></td><td class="param-desc">asterisk | placeholder | partial | hash (default: placeholder)</td></tr>
+      <tr><td class="param-name">--create</td><td></td><td class="param-desc">Create rule immediately, bypassing the approval queue (admin / org owner only)</td></tr>
+      <tr><td class="param-name">--dry-run</td><td></td><td class="param-desc">Print the generated payload without sending any request</td></tr>
+      <tr><td class="param-name">--name</td><td></td><td class="param-desc">Override the LLM-suggested rule name</td></tr>
+      <tr><td class="param-name">--category</td><td></td><td class="param-desc">Override the LLM-suggested category</td></tr>
+    </table>
+
+    <div class="params-title">Examples</div>
+    <div class="code-block"><span class="c"># Submit for admin review (default — recommended)</span>
+python3 llm_add_rule.py \
+  -k dms_your_key \
+  -d <span class="s">"SUSE registration code like Regcode-XXXXX"</span>
+
+<span class="c"># Add a reason for the reviewer</span>
+python3 llm_add_rule.py \
+  -k dms_your_key \
+  -d <span class="s">"AWS S3 bucket URL"</span> \
+  -r <span class="s">"Found in recent audit logs, needs masking before external sharing"</span>
+
+<span class="c"># Provide extra context to improve LLM pattern accuracy</span>
+python3 llm_add_rule.py \
+  -k dms_your_key \
+  -d <span class="s">"internal service token"</span> \
+  -c <span class="s">"format: svc-[a-z]+-[0-9a-f]{16}"</span>
+
+<span class="c"># Create rule directly as org-scoped (admin or org owner only)</span>
+python3 llm_add_rule.py \
+  -k dms_admin_key \
+  -d <span class="s">"IPv6 address"</span> \
+  --scope org --create
+
+<span class="c"># Dry-run first to inspect the LLM output before submitting</span>
+python3 llm_add_rule.py \
+  -k dms_your_key \
+  -d <span class="s">"SSH private key header"</span> \
+  --dry-run</div>
+
+    <div class="params-title">Workflow</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;margin-bottom:8px">
+      <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.2);border-radius:8px;padding:14px;font-size:12px">
+        <div style="font-weight:700;color:var(--green);margin-bottom:6px">[1/2] Generate — POST /llm/generate-regex</div>
+        <div style="color:var(--muted)">Sends description + context to the LLM. Prints pattern, flags, placeholder, match/no-match examples.</div>
+      </div>
+      <div style="background:rgba(48,186,120,.06);border:1px solid rgba(48,186,120,.2);border-radius:8px;padding:14px;font-size:12px">
+        <div style="font-weight:700;color:var(--green);margin-bottom:6px">[2/2] Submit — POST /rules/suggestions (default)</div>
+        <div style="color:var(--muted)">Creates a pending suggestion. A reviewer approves it in the Admin Console before it goes live. Use <code>--create</code> to skip the queue.</div>
+      </div>
+    </div>
+    <div class="note">💡 <strong>Best practice:</strong> always dry-run first (<code>--dry-run</code>) to verify the LLM output, then re-run without it. Use the default suggestion flow rather than <code>--create</code> — having a second set of eyes on a regex prevents accidental over-masking or missed patterns.</div>
   </section>
 
   <div style="border-top:1px solid var(--border);padding-top:24px;color:var(--muted);font-size:11px;text-align:center">
