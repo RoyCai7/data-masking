@@ -30,7 +30,7 @@
 
 ### Production server
 
-The service runs on `<SERVER_IP>` — no Docker required.
+The service runs on `<SERVER_IP>`.
 
 | Component | Address | Details |
 |-----------|---------|---------|
