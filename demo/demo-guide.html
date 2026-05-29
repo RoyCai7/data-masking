@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Masking Service — Live Demo Guide</title>
+<style>
+  :root {
+    --green:  #30ba78;
+    --green-d:#1f8a56;
+    --dark:   #0f1117;
+    --card:   #1a1d27;
+    --border: #2a2d3a;
+    --text:   #e2e8f0;
+    --muted:  #8892a4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--dark); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  /* Header */
+  .page-header { margin-bottom: 40px; }
+  .back-link { font-size: 12px; color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 5px; margin-bottom: 20px; }
+  .back-link:hover { color: var(--green); }
+  .page-header h1 { font-size: 30px; font-weight: 800; background: linear-gradient(135deg, var(--green), #60efbc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .page-header p { color: var(--muted); margin-top: 8px; font-size: 13px; }
+  .meta-row { display: flex; gap: 20px; margin-top: 14px; flex-wrap: wrap; }
+  .meta-badge { font-size: 11px; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; color: var(--muted); }
+  .meta-badge strong { color: var(--text); }
+
+  /* Timeline nav */
+  .timeline-nav { display: flex; gap: 0; margin-bottom: 36px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .tl-step { flex: 1; padding: 12px 8px; text-align: center; cursor: pointer; border-right: 1px solid var(--border); font-size: 11px; color: var(--muted); transition: background .15s; }
+  .tl-step:last-child { border-right: none; }
+  .tl-step:hover { background: rgba(48,186,120,.06); color: var(--text); }
+  .tl-step .num { display: block; font-size: 16px; font-weight: 800; color: var(--green); margin-bottom: 2px; }
+  .tl-step .dur { display: block; font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  /* Story box */
+  .story-box { background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.25); border-radius: 12px; padding: 20px 22px; margin-bottom: 24px; }
+  .story-box h3 { font-size: 13px; font-weight: 700; color: #ef4444; margin-bottom: 10px; }
+  .story-box p { font-size: 13px; color: #94a3b8; line-height: 1.8; margin-bottom: 8px; }
+  .story-box p:last-child { margin-bottom: 0; }
+
+  /* Step cards */
+  .step-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; overflow: hidden; scroll-margin-top: 24px; }
+  .step-header { padding: 14px 18px; display: flex; align-items: center; gap: 14px; }
+  .step-header.green { background: rgba(48,186,120,.1); }
+  .step-header.amber { background: rgba(245,158,11,.12); }
+  .step-num { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+  .step-num.green { background: var(--green); color: #000; }
+  .step-num.amber { background: #f59e0b; color: #000; }
+  .step-title { font-weight: 700; font-size: 14px; }
+  .step-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .step-dur { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .step-body { padding: 16px 18px 20px; }
+
+  /* Say / Do / Point blocks */
+  .say { font-size: 13px; color: #94a3b8; line-height: 1.8; margin-bottom: 10px; }
+  .say strong { color: var(--text); }
+  .do-list { font-size: 12px; color: #94a3b8; line-height: 2.1; padding-left: 20px; margin-bottom: 10px; }
+  .do-list li { }
+  .do-list strong { color: var(--text); }
+  .do-list code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .highlight-note { background: rgba(48,186,120,.06); border-left: 3px solid var(--green); padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 12px; color: #94a3b8; margin-top: 10px; }
+  .highlight-note strong { color: var(--text); }
+  .highlight-note code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  /* Tag pills */
+  .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag { background: rgba(239,68,68,.12); color: #ef4444; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+
+  /* Code block */
+  .code-block { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; overflow-x: auto; margin-top: 10px; white-space: pre; line-height: 1.7; }
+  .code-block .k { color: #ff7b72; }
+  .code-block .s { color: #a5d6ff; }
+  .code-block .c { color: #8b949e; }
+
+  /* Closing box */
+  .closing-box { background: rgba(48,186,120,.06); border: 1px solid rgba(48,186,120,.25); border-radius: 12px; padding: 20px 22px; margin-bottom: 32px; }
+  .closing-box h3 { font-size: 13px; font-weight: 700; color: var(--green); margin-bottom: 8px; }
+  .closing-box p { font-size: 13px; color: #94a3b8; line-height: 1.8; }
+
+  /* Tables */
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; margin-top: 28px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px; }
+  th { text-align: left; padding: 7px 12px; background: rgba(255,255,255,.03); color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: top; color: #94a3b8; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text); font-weight: 600; white-space: nowrap; }
+  td code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 3px; font-size: 11px; font-family: monospace; color: var(--text); }
+
+  /* Footer */
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); text-align: center; }
+  footer a { color: var(--green); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- Header -->
+  <div class="page-header">
+    <a class="back-link" href="/api-docs.html">← API Reference</a>
+    <h1>🎬 Live Demo Guide</h1>
+    <p>Step-by-step script for a 10-minute live demo targeting business / non-technical audiences.</p>
+    <div class="meta-row">
+      <span class="meta-badge"><strong>Duration</strong> ~10 min</span>
+      <span class="meta-badge"><strong>Audience</strong> Business / Management</span>
+      <span class="meta-badge"><strong>Format</strong> Live, browser + terminal</span>
+      <span class="meta-badge"><strong>Goal</strong> Show problem → solution → AI rule creation</span>
+    </div>
+  </div>
+
+  <!-- Timeline nav -->
+  <div class="timeline-nav">
+    <div class="tl-step" onclick="document.getElementById('s0').scrollIntoView({behavior:'smooth'})">
+      <span class="num">🎯</span>Setup<span class="dur">pre-demo</span>
+    </div>
+    <div class="tl-step" onclick="document.getElementById('s1').scrollIntoView({behavior:'smooth'})">
+      <span class="num">1</span>Raw File<span class="dur">1 min</span>
+    </div>
+    <div class="tl-step" onclick="document.getElementById('s2').scrollIntoView({behavior:'smooth'})">
+      <span class="num">2</span>Mask<span class="dur">2 min</span>
+    </div>
+    <div class="tl-step" onclick="document.getElementById('s3').scrollIntoView({behavior:'smooth'})">
+      <span class="num">3</span>Report<span class="dur">1 min</span>
+    </div>
+    <div class="tl-step" onclick="document.getElementById('s4').scrollIntoView({behavior:'smooth'})">
+      <span class="num">4</span>Rules<span class="dur">2 min</span>
+    </div>
+    <div class="tl-step" onclick="document.getElementById('s5').scrollIntoView({behavior:'smooth'})">
+      <span class="num">5</span>AI Rule<span class="dur">3 min</span>
+    </div>
+    <div class="tl-step" onclick="document.getElementById('s6').scrollIntoView({behavior:'smooth'})">
+      <span class="num">🏁</span>Close<span class="dur">30 sec</span>
+    </div>
+  </div>
+
+  <!-- Opening story -->
+  <div class="story-box">
+    <h3>🎯 The Story — say this to open</h3>
+    <p>"Imagine your support team exports a batch of customer tickets to share with a partner. Inside those files: customer passwords, SSH keys, database credentials, credit card numbers — mixed in with legitimate log data. How do you make sure none of that leaks before the file leaves the building?"</p>
+    <p>"This is what the Data Masking Service solves — automatically, in seconds, with a full audit trail."</p>
+  </div>
+
+  <!-- Step 0: Pre-demo checklist -->
+  <div class="step-card" id="s0">
+    <div class="step-header green">
+      <div class="step-num green">✓</div>
+      <div>
+        <div class="step-title">Pre-demo checklist <span class="step-dur">— prepare before the room fills up</span></div>
+        <div class="step-sub">Have all of these ready before you start</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <table>
+        <tr><th>Item</th><th>Detail</th></tr>
+        <tr><td>Demo file</td><td><code>demo/support_ticket_export.txt</code> — open in a text editor, scrolled to top</td></tr>
+        <tr><td>Browser tab</td><td><code>http://&lt;server-address&gt;</code> — logged in with your API key (Settings → enter key)</td></tr>
+        <tr><td>Terminal</td><td>Open, <code>cd</code> to project folder. Run: <code>export K=dms_your_key</code></td></tr>
+        <tr><td>Second browser tab</td><td>Same URL — for showing before/after side by side after download</td></tr>
+        <tr><td>Fallback plan</td><td>If LLM is slow: use <code>--dry-run</code> to show the payload, then submit separately</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="step-card" id="s1">
+    <div class="step-header green">
+      <div class="step-num green">1</div>
+      <div>
+        <div class="step-title">Show the raw file <span class="step-dur">— 1 min</span></div>
+        <div class="step-sub">Open <code>demo/support_ticket_export.txt</code> in a text editor</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <p class="say"><strong>Say:</strong> "This is a realistic support ticket export — the kind of file a support team might send to a third-party partner. Scroll through it slowly. Notice what's hiding in here."</p>
+      <div class="tag-row">
+        <span class="tag">Root passwords</span>
+        <span class="tag">SSH private key</span>
+        <span class="tag">AWS access key + secret</span>
+        <span class="tag">Credit card number</span>
+        <span class="tag">JWT token</span>
+        <span class="tag">DB connection string with password</span>
+        <span class="tag">Internal IP addresses</span>
+        <span class="tag">Customer email addresses</span>
+        <span class="tag">SUSE Reg codes</span>
+        <span class="tag">FTP credentials</span>
+      </div>
+      <p class="say" style="margin-top:12px"><strong>Say:</strong> "This file cannot be shared as-is. Manually redacting it is slow, error-prone, and impossible to audit."</p>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step-card" id="s2">
+    <div class="step-header green">
+      <div class="step-num green">2</div>
+      <div>
+        <div class="step-title">Upload and mask via the Web UI <span class="step-dur">— 2 min</span></div>
+        <div class="step-sub">Switch to browser tab — <code>http://&lt;server-address&gt;</code></div>
+      </div>
+    </div>
+    <div class="step-body">
+      <p class="say"><strong>Say:</strong> "The web interface is what most users will see. No training needed — just drag and drop."</p>
+      <ol class="do-list">
+        <li>Drag <code>support_ticket_export.txt</code> onto the upload area (or click to browse)</li>
+        <li>Click <strong>Upload &amp; Mask</strong> — watch the progress indicator</li>
+        <li>When status shows <strong>Completed</strong> — click <strong>Download Masked File</strong></li>
+        <li>Open the downloaded file in your text editor — put the two windows side by side</li>
+      </ol>
+      <div class="highlight-note">
+        <strong>Say:</strong> "Every credential, key, email, and IP is replaced with a clear label — <code>[PASSWORD]</code>, <code>[AWS_ACCESS_KEY]</code>, <code>[EMAIL]</code> — while all the other content stays intact. The file is readable, just safe to share."
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="step-card" id="s3">
+    <div class="step-header green">
+      <div class="step-num green">3</div>
+      <div>
+        <div class="step-title">Show the risk report <span class="step-dur">— 1 min</span></div>
+        <div class="step-sub">Click the Report button on the completed task</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <p class="say"><strong>Say:</strong> "Every masking job produces a full audit report. This is your compliance evidence — you can prove exactly what was found and masked."</p>
+      <ol class="do-list">
+        <li>Point to the <strong>Risk Score</strong> — explain it reflects volume and sensitivity of findings</li>
+        <li>Scroll through the <strong>per-rule breakdown</strong> — show match counts per category</li>
+        <li>Click an example row — show the original value and its masked replacement with file + line reference</li>
+      </ol>
+      <p class="say"><strong>Say:</strong> "This report can be saved and attached to your change record or compliance ticket."</p>
+    </div>
+  </div>
+
+  <!-- Step 4 -->
+  <div class="step-card" id="s4">
+    <div class="step-header green">
+      <div class="step-num green">4</div>
+      <div>
+        <div class="step-title">Show rule management <span class="step-dur">— 2 min</span></div>
+        <div class="step-sub">Click <strong>Rules</strong> in the header nav</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <p class="say"><strong>Say:</strong> "The system ships with built-in rules for common sensitive patterns — emails, passwords, API keys, IPs, credit cards. You can see exactly which rules are active, what they match, and toggle them on or off."</p>
+      <ol class="do-list">
+        <li>Filter by a category — e.g. <strong>Credential</strong></li>
+        <li>Toggle one rule off, then back on — to show live control</li>
+        <li>Open a rule detail — show the regex pattern, strategy, and weight</li>
+      </ol>
+      <p class="say"><strong>Say:</strong> "But every organisation has unique data. SUSE has registration codes in the format <code>Regcode-XXXXX</code>. That's not in any generic ruleset. Let me show you how to add that in 30 seconds."</p>
+    </div>
+  </div>
+
+  <!-- Step 5 -->
+  <div class="step-card" id="s5">
+    <div class="step-header amber">
+      <div class="step-num amber">5</div>
+      <div>
+        <div class="step-title">✨ AI rule creation — the wow moment <span class="step-dur">— 3 min</span></div>
+        <div class="step-sub">Switch to terminal</div>
+      </div>
+    </div>
+    <div class="step-body">
+      <p class="say"><strong>Say:</strong> "Writing a regex by hand takes expertise most people don't have. With our AI integration, you just describe what you want in plain English — the system does the rest."</p>
+      <div class="code-block"><span class="c"># Describe the pattern in plain English</span>
+python3 llm_add_rule.py \
+  -k $K \
+  -d <span class="s">"SUSE registration code in the format Regcode-XXXXX where X is uppercase letter or digit"</span> \
+  -r <span class="s">"Needed for support ticket export masking"</span></div>
+      <ol class="do-list" style="margin-top:12px">
+        <li><strong>While it runs, say:</strong> "The local AI model reads the description, generates a regex, and tests it against examples — all on-premise. Nothing leaves the server."</li>
+        <li><strong>When output appears:</strong> "It generated the pattern, showed what it matches and what it doesn't, and submitted it for review — one command."</li>
+        <li>Switch to the browser → <strong>Admin Console → Suggestions</strong> — the new suggestion is pending</li>
+        <li>Click <strong>Approve</strong></li>
+        <li>Re-upload <code>support_ticket_export.txt</code> — the <code>Regcode-ABCDE</code> values are now masked</li>
+      </ol>
+      <div class="highlight-note">
+        <strong>Say:</strong> "The suggestion workflow means anyone on the team can propose a rule — they don't need to know regex. A reviewer approves it before it goes live. No accidents."
+      </div>
+    </div>
+  </div>
+
+  <!-- Closing -->
+  <div class="closing-box" id="s6">
+    <h3>🏁 Closing — 30 seconds</h3>
+    <p>"The full cycle is: upload, mask, download, report — in under 30 seconds. Rules are centrally managed with role-based access. New patterns can be added by anyone via AI suggestion, reviewed and approved by admins. Everything is logged and auditable. And it all runs on-premise — your data never leaves your infrastructure."</p>
+  </div>
+
+  <!-- Cheat sheet -->
+  <div class="section-label">📋 Cheat Sheet — What to Prepare</div>
+  <table>
+    <tr><th>Item</th><th>Detail</th></tr>
+    <tr><td>Demo file</td><td><code>demo/support_ticket_export.txt</code> — open in text editor, scrolled to top</td></tr>
+    <tr><td>Browser tab</td><td><code>http://&lt;server-address&gt;</code> — API key already entered in Settings</td></tr>
+    <tr><td>Terminal</td><td><code>cd /path/to/data-masking && export K=dms_your_key</code></td></tr>
+    <tr><td>LLM fallback</td><td>Add <code>--dry-run</code> if the model is slow — show payload, then submit separately</td></tr>
+    <tr><td>Whitelist angle</td><td>Add <code>-w "10.44.12.11"</code> to show targeted exclusion of a specific IP</td></tr>
+  </table>
+
+  <div class="section-label">❓ Likely Questions &amp; Answers</div>
+  <table>
+    <tr><th>Question</th><th>Answer</th></tr>
+    <tr><td>Does it work on archives / zip files?</td><td>Yes — upload a <code>.tar.gz</code> or <code>.zip</code>; every text file inside is masked and the archive is repacked. The report shows which file and line each match came from.</td></tr>
+    <tr><td>Is data sent to the cloud?</td><td>No — everything runs on-premise. The LLM model runs locally via Ollama. No data leaves your server.</td></tr>
+    <tr><td>Who controls which rules are active?</td><td>Admins manage system-wide rules. Org owners manage org rules. Regular users can submit suggestions but cannot create rules directly.</td></tr>
+    <tr><td>How do we add custom patterns?</td><td>Describe it in plain English with <code>llm_add_rule.py</code>, or write the regex manually in the Admin Console.</td></tr>
+    <tr><td>Can we integrate this into CI/CD?</td><td>Yes — full REST API. The <code>mask_api.sh</code> script can be called from any pipeline.</td></tr>
+    <tr><td>What file types are supported?</td><td>Any plain text file — logs, config files, exports. Also <code>.tar.gz</code>, <code>.tgz</code>, and <code>.zip</code> archives.</td></tr>
+    <tr><td>Can it handle large files?</td><td>Yes — processing is asynchronous. Upload returns immediately; you poll for completion. The task queue handles concurrent uploads.</td></tr>
+  </table>
+
+  <footer>
+    SUSE Data Masking Service · <a href="/api-docs.html">API Reference</a> · Demo Guide · 2026-05-29
+  </footer>
+
+</main>
+</body>
+</html>
