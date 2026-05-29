@@ -122,7 +122,7 @@ export default function Header() {
             </button>
 
             <a
-              href="/docs"
+              href="/api-docs.html"
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-suse-green-light hover:text-white transition-colors"
