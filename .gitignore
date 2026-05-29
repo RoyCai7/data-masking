@@ -55,3 +55,6 @@ apply_fixes.py
 frontend/playwright-report/
 frontend/test-results/
 autoinst-log.txt
+masked_upload_*.txt
+*.masked.txt
+.env

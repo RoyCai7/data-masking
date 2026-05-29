@@ -7,7 +7,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://10.146.15.188:8080',
+    baseURL: process.env.DMS_SERVER || 'http://localhost:8080',
     headless: true,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

@@ -1,5 +1,5 @@
 /**
- * E2E tests — targeting http://10.146.15.188:8080
+ * E2E tests — targeting the server defined by DMS_SERVER env var
  *
  * Group A: Infrastructure  (health, status, session)
  * Group B: Auth guards     (no key, invalid key, role check)
@@ -12,8 +12,8 @@
 
 import { test, expect, Page } from '@playwright/test';
 
-const ADMIN_KEY = 'dms_3be8006031f045d3aafdc6c78282f2e4';
-const BASE_URL  = 'http://10.146.15.188:8080';
+const ADMIN_KEY = process.env.DMS_ADMIN_KEY || '';
+const BASE_URL  = process.env.DMS_SERVER || 'http://localhost:8080';
 const API       = `${BASE_URL}/api/v1`;
 
 // ---------------------------------------------------------------------------

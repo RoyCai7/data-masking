@@ -25,19 +25,19 @@ It covers:
 
 Production Web URL:
 
-- `http://10.146.15.188:8080`
+- `http://<SERVER_IP>:8080`
 
 ### 2.2 API Base URL
 
 API Base URL:
 
-- `http://10.146.15.188:8080/api/v1`
+- `http://<SERVER_IP>:8080/api/v1`
 
 ### 2.3 Swagger Docs
 
 Interactive API docs:
 
-- `http://10.146.15.188:8080/docs`
+- `http://<SERVER_IP>:8080/docs`
 
 ---
 
@@ -143,7 +143,7 @@ X-API-Key: dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 Visit:
 
-- `http://10.146.15.188:8080`
+- `http://<SERVER_IP>:8080`
 
 To upload files, query tasks, or download results, first save a valid API key from the `Key` button in the top-right corner.
 
@@ -276,7 +276,7 @@ Notes:
 ### 5.5.1 Create a session (optional)
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/session
+curl -X POST http://<SERVER_IP>:8080/api/v1/session
 ```
 
 Response:
@@ -291,7 +291,7 @@ Response:
 ### 5.5.2 Upload a file
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/mask \
+curl -X POST http://<SERVER_IP>:8080/api/v1/mask \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -F "file=@./sample.log" \
@@ -313,7 +313,7 @@ Response:
 ### 5.5.3 Query task status
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/task/<task_id> \
+curl http://<SERVER_IP>:8080/api/v1/task/<task_id> \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
@@ -321,7 +321,7 @@ curl http://10.146.15.188:8080/api/v1/task/<task_id> \
 ### 5.5.4 List all tasks in the current session
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/tasks \
+curl http://<SERVER_IP>:8080/api/v1/tasks \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
@@ -329,7 +329,7 @@ curl http://10.146.15.188:8080/api/v1/tasks \
 ### 5.5.5 Download masked file
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/download/<task_id> \
+curl http://<SERVER_IP>:8080/api/v1/download/<task_id> \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -o masked_output.dat
@@ -338,7 +338,7 @@ curl http://10.146.15.188:8080/api/v1/download/<task_id> \
 ### 5.5.6 Get JSON report
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/report/<task_id> \
+curl http://<SERVER_IP>:8080/api/v1/report/<task_id> \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
@@ -356,13 +356,13 @@ Notes:
 ### View system status
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/status
+curl http://<SERVER_IP>:8080/api/v1/status
 ```
 
 ### View rule list
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules
+curl http://<SERVER_IP>:8080/api/v1/rules
 ```
 
 Notes:
@@ -374,7 +374,7 @@ Notes:
 Example:
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/ipv4 \
+curl http://<SERVER_IP>:8080/api/v1/rules/ipv4 \
   -H "X-API-Key: <your_api_key>"
 ```
 
@@ -387,7 +387,7 @@ If you find missed masking or over-masking, you can submit a suggestion.
 ### Submit a new rule suggestion
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your_api_key>" \
   -d '{
@@ -406,7 +406,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
 ### Submit a modification suggestion
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your_api_key>" \
   -d '{
@@ -420,7 +420,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
 ### View your submitted suggestions
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "X-API-Key: <your_api_key>"
 ```
 
@@ -482,7 +482,7 @@ For bulk operations, request-body debugging, or advanced troubleshooting, Swagge
 ### Create a new user key
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/keys \
+curl -X POST http://<SERVER_IP>:8080/api/v1/keys \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -495,7 +495,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/keys \
 ### Create a new admin key
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/keys \
+curl -X POST http://<SERVER_IP>:8080/api/v1/keys \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -508,14 +508,14 @@ curl -X POST http://10.146.15.188:8080/api/v1/keys \
 ### View all keys
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/keys \
+curl http://<SERVER_IP>:8080/api/v1/keys \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### Disable a key
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/keys/disable \
+curl -X POST http://<SERVER_IP>:8080/api/v1/keys/disable \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -530,25 +530,25 @@ curl -X POST http://10.146.15.188:8080/api/v1/keys/disable \
 ### View all rules
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules
+curl http://<SERVER_IP>:8080/api/v1/rules
 ```
 
 ### View enabled rules only
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules?enabled_only=true'
+curl 'http://<SERVER_IP>:8080/api/v1/rules?enabled_only=true'
 ```
 
 ### Filter by category
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules?category=network'
+curl 'http://<SERVER_IP>:8080/api/v1/rules?category=network'
 ```
 
 ### View single rule detail
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/aws_access_key \
+curl http://<SERVER_IP>:8080/api/v1/rules/aws_access_key \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -562,7 +562,7 @@ Notes:
 ## 6.5 Admin API: Create a Rule
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -595,7 +595,7 @@ Field descriptions:
 ## 6.6 Admin API: Update a Rule
 
 ```bash
-curl -X PUT http://10.146.15.188:8080/api/v1/rules/k8s_secret_token \
+curl -X PUT http://<SERVER_IP>:8080/api/v1/rules/k8s_secret_token \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -615,7 +615,7 @@ Notes:
 ## 6.7 Admin API: Enable / Disable a Rule
 
 ```bash
-curl -X PATCH http://10.146.15.188:8080/api/v1/rules/k8s_secret_token/toggle \
+curl -X PATCH http://<SERVER_IP>:8080/api/v1/rules/k8s_secret_token/toggle \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -629,7 +629,7 @@ Notes:
 ## 6.8 Admin API: Delete a Rule
 
 ```bash
-curl -X DELETE http://10.146.15.188:8080/api/v1/rules/k8s_secret_token \
+curl -X DELETE http://<SERVER_IP>:8080/api/v1/rules/k8s_secret_token \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -645,7 +645,7 @@ Notes:
 ### Export all rules
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules-export \
+curl http://<SERVER_IP>:8080/api/v1/rules-export \
   -H "X-API-Key: <admin_api_key>" \
   -o rules-export.json
 ```
@@ -653,7 +653,7 @@ curl http://10.146.15.188:8080/api/v1/rules-export \
 ### Import rules
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules-import \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules-import \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   --data @rules-export.json
@@ -672,21 +672,21 @@ During import:
 ### View all suggestions
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### View pending suggestions only
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules/suggestions?status=pending' \
+curl 'http://<SERVER_IP>:8080/api/v1/rules/suggestions?status=pending' \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### Approve a suggestion
 
 ```bash
-curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
+curl -X PATCH http://<SERVER_IP>:8080/api/v1/rules/suggestions/1 \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{"action": "approve"}'
@@ -695,7 +695,7 @@ curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
 ### Reject a suggestion
 
 ```bash
-curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
+curl -X PATCH http://<SERVER_IP>:8080/api/v1/rules/suggestions/1 \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{"action": "reject"}'
@@ -713,14 +713,14 @@ Notes:
 ### View the latest 50 changes
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/changelog \
+curl http://<SERVER_IP>:8080/api/v1/rules/changelog \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### View change history for one rule
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
+curl 'http://<SERVER_IP>:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -860,13 +860,13 @@ Check:
 
 ```bash
 # View status
-curl http://10.146.15.188:8080/api/v1/status
+curl http://<SERVER_IP>:8080/api/v1/status
 
 # Create session
-curl -X POST http://10.146.15.188:8080/api/v1/session
+curl -X POST http://<SERVER_IP>:8080/api/v1/session
 
 # Upload file
-curl -X POST http://10.146.15.188:8080/api/v1/mask \
+curl -X POST http://<SERVER_IP>:8080/api/v1/mask \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -F "file=@./sample.log"
@@ -876,10 +876,10 @@ curl -X POST http://10.146.15.188:8080/api/v1/mask \
 
 ```bash
 # View rules
-curl http://10.146.15.188:8080/api/v1/rules
+curl http://<SERVER_IP>:8080/api/v1/rules
 
 # Create rule
-curl -X POST http://10.146.15.188:8080/api/v1/rules \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -894,7 +894,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules \
   }'
 
 # Export rules
-curl http://10.146.15.188:8080/api/v1/rules-export \
+curl http://<SERVER_IP>:8080/api/v1/rules-export \
   -H "X-API-Key: <admin_api_key>" \
   -o rules-export.json
 ```

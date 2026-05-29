@@ -170,7 +170,7 @@
     <h1>Data Masking Service</h1>
     <p>REST API for sensitive data detection and masking in files and archives.</p>
     <div class="meta">
-      <div class="meta-item"><strong>Base URL</strong> &nbsp;http://10.146.15.188:8080lt;server-address10.146.15.188:8080gt;/api/v1</div>
+      <div class="meta-item"><strong>Base URL</strong> &nbsp;http://<SERVER_IP>:8080lt;server-address<SERVER_IP>:8080gt;/api/v1</div>
       <div class="meta-item"><strong>Version</strong> &nbsp;1.0</div>
       <div class="meta-item"><strong>Format</strong> &nbsp;JSON</div>
     </div>
@@ -213,22 +213,22 @@
     </div>
 
     <div class="code-block"><span class="c"># 1. Upload a file</span>
-<span class="k">curl</span> -X POST http://10.146.15.188:8080lt;server-address10.146.15.188:8080gt;/api/v1/mask \
+<span class="k">curl</span> -X POST http://<SERVER_IP>:8080lt;server-address<SERVER_IP>:8080gt;/api/v1/mask \
   -H <span class="s">"X-API-Key: dms_your_key"</span> \
   -F <span class="s">"file=@secrets.log"</span>
 
 <span class="c"># Response → {"task_id": "abc-123", "status": "pending", ...}</span>
 
 <span class="c"># 2. Poll until completed</span>
-<span class="k">curl</span> http://10.146.15.188:8080lt;server-address10.146.15.188:8080gt;/api/v1/task/abc-123 \
+<span class="k">curl</span> http://<SERVER_IP>:8080lt;server-address<SERVER_IP>:8080gt;/api/v1/task/abc-123 \
   -H <span class="s">"X-API-Key: dms_your_key"</span>
 
 <span class="c"># 3. Download masked file</span>
-<span class="k">curl</span> -OJ http://10.146.15.188:8080lt;server-address10.146.15.188:8080gt;/api/v1/download/abc-123 \
+<span class="k">curl</span> -OJ http://<SERVER_IP>:8080lt;server-address<SERVER_IP>:8080gt;/api/v1/download/abc-123 \
   -H <span class="s">"X-API-Key: dms_your_key"</span>
 
 <span class="c"># 4. Get masking report</span>
-<span class="k">curl</span> http://10.146.15.188:8080lt;server-address10.146.15.188:8080gt;/api/v1/report/abc-123 \
+<span class="k">curl</span> http://<SERVER_IP>:8080lt;server-address<SERVER_IP>:8080gt;/api/v1/report/abc-123 \
   -H <span class="s">"X-API-Key: dms_your_key"</span></div>
   </section>
 
@@ -404,7 +404,7 @@
           <tr><td class="param-name">enabled_only</td><td class="param-type">boolean</td><td class="param-desc">Return only enabled rules (default: false)</td></tr>
           <tr><td class="param-name">scope</td><td class="param-type">string</td><td class="param-desc">Filter by scope: <code>system</code> | <code>org</code> | <code>private</code></td></tr>
         </table>
-        <div class="code-block"><span class="k">curl</span> <span class="s">"http://10.146.15.188:8080lt;server-address10.146.15.188:8080gt;/api/v1/rules?scope=private&amp;enabled_only=true"</span> \
+        <div class="code-block"><span class="k">curl</span> <span class="s">"http://<SERVER_IP>:8080lt;server-address<SERVER_IP>:8080gt;/api/v1/rules?scope=private&amp;enabled_only=true"</span> \
   -H <span class="s">"X-API-Key: dms_your_key"</span></div>
       </div>
     </div>

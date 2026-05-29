@@ -7,7 +7,7 @@ This file describes the project structure, development workflow, and CI/CD pipel
 ## Project Overview
 
 A data masking service with:
-- **Backend**: FastAPI + SQLite, systemd on `root@10.146.15.188`, uvicorn at `127.0.0.1:8000`
+- **Backend**: FastAPI + SQLite, systemd on `root@<SERVER_IP>`, uvicorn at `127.0.0.1:8000`
 - **Frontend**: React + Vite + Tailwind, nginx at `:8080`, serving compiled `dist/`
 - **LLM**: ollama (`qwen2.5-coder:7b`) via SSH reverse tunnel from Mac → server `127.0.0.1:11434`
 - **No Docker** on server
@@ -56,7 +56,7 @@ npm run dev                        # Vite dev server, proxies /api → localhost
 ```bash
 # On Mac — keep running while developing
 ollama serve                       # must be running on 127.0.0.1:11434
-ssh -R 11434:127.0.0.1:11434 root@10.146.15.188 -N
+ssh -R 11434:127.0.0.1:11434 root@<SERVER_IP> -N
 ```
 
 ---
@@ -73,13 +73,13 @@ python -m pytest tests/ -q        # 219 tests, all should pass
 ```bash
 cd frontend
 npx playwright test e2e/smoke.spec.ts --reporter=line
-# Target: http://10.146.15.188:8080  (set in playwright.config.ts)
+# Target: http://<SERVER_IP>:8080  (set in playwright.config.ts)
 # 39 tests
 ```
 
 ---
 
-## Deploy to Server (10.146.15.188)
+## Deploy to Server (<SERVER_IP>)
 
 ### Full deploy
 ```bash
@@ -87,25 +87,25 @@ npx playwright test e2e/smoke.spec.ts --reporter=line
 git add -A && git commit -m "..." && git push
 
 # 2. Server: sync code
-ssh root@10.146.15.188 "cd /opt/data-masking && git fetch origin && git reset --hard origin/main"
+ssh root@<SERVER_IP> "cd /opt/data-masking && git fetch origin && git reset --hard origin/main"
 
 # 3. Server: rebuild frontend
-ssh root@10.146.15.188 "cd /opt/data-masking/frontend && npm install --silent && npm run build"
+ssh root@<SERVER_IP> "cd /opt/data-masking/frontend && npm install --silent && npm run build"
 
 # 4. Server: restart backend
-ssh root@10.146.15.188 "systemctl restart data-masking"
+ssh root@<SERVER_IP> "systemctl restart data-masking"
 ```
 
 ### Backend-only deploy (no frontend change)
 ```bash
 git push
-ssh root@10.146.15.188 "cd /opt/data-masking && git reset --hard origin/main && systemctl restart data-masking"
+ssh root@<SERVER_IP> "cd /opt/data-masking && git reset --hard origin/main && systemctl restart data-masking"
 ```
 
 ### Verify
 ```bash
-ssh root@10.146.15.188 "systemctl is-active data-masking nginx"
-curl -s http://10.146.15.188:8080/api/status | python3 -m json.tool
+ssh root@<SERVER_IP> "systemctl is-active data-masking nginx"
+curl -s http://<SERVER_IP>:8080/api/status | python3 -m json.tool
 ```
 
 ---
@@ -138,7 +138,7 @@ curl -s http://10.146.15.188:8080/api/status | python3 -m json.tool
 
 #### Stage 4 — Deploy (main branch only)
 ```bash
-ssh root@10.146.15.188 << 'EOF'
+ssh root@<SERVER_IP> << 'EOF'
   set -e
   cd /opt/data-masking
   git fetch origin && git reset --hard origin/main
@@ -150,7 +150,7 @@ EOF
 
 #### Stage 5 — Smoke Test (post-deploy)
 ```bash
-curl -sf http://10.146.15.188:8080/api/status
+curl -sf http://<SERVER_IP>:8080/api/status
 ```
 
 ---
@@ -171,7 +171,7 @@ Restart=always
 
 ### LLM tunnel (manual, not persisted across reboots)
 ```bash
-ssh -R 11434:127.0.0.1:11434 root@10.146.15.188 -N -f
+ssh -R 11434:127.0.0.1:11434 root@<SERVER_IP> -N -f
 ```
 > ⚠️ If Mac disconnects, LLM features return 503. Core masking/rules/keys are unaffected.
 
@@ -183,7 +183,7 @@ ssh -R 11434:127.0.0.1:11434 root@10.146.15.188 -N -f
 |----------|---------|-------------|
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama endpoint (tunneled from Mac) |
 | `OLLAMA_DEFAULT_MODEL` | `qwen2.5-coder:7b` | LLM model for regex suggestions |
-| `OPENCODE_BASE_URL` | `http://10.146.15.188:3000/v1` | OpenAI-compat endpoint (unused) |
+| `OPENCODE_BASE_URL` | `http://localhost:3000/v1` | OpenAI-compat endpoint (unused) |
 
 ---
 

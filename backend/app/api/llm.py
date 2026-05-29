@@ -15,9 +15,9 @@ Supported providers
 
 Environment variables
 =====================
-  OLLAMA_BASE_URL         (default: http://10.146.15.188:11434)
+  OLLAMA_BASE_URL         (default: http://127.0.0.1:11434)
   OLLAMA_DEFAULT_MODEL    (default: gemma3:4b)
-  OPENCODE_BASE_URL       (default: http://10.146.15.188:3000/v1)
+  OPENCODE_BASE_URL       (default: http://localhost:3000/v1)
   OPENCODE_DEFAULT_MODEL  (default: gemma3:4b)
   OPENCODE_API_KEY        optional bearer token
 """
@@ -69,9 +69,9 @@ async def shutdown() -> None:
 
 # ---- Config -----------------------------------------------------------------
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://10.146.15.188:11434").rstrip("/")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_DEFAULT_MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma3:4b")
-OPENCODE_BASE_URL = os.getenv("OPENCODE_BASE_URL", "http://10.146.15.188:3000/v1").rstrip("/")
+OPENCODE_BASE_URL = os.getenv("OPENCODE_BASE_URL", "http://localhost:3000/v1").rstrip("/")
 OPENCODE_DEFAULT_MODEL = os.getenv("OPENCODE_DEFAULT_MODEL", "gemma3:4b")
 OPENCODE_API_KEY = os.getenv("OPENCODE_API_KEY", "").strip()
 

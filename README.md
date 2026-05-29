@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Data Masking Service</strong><br>
-  Web upload and REST API with 16-thread concurrent processing
+  Web UI + REST API · 16-thread concurrent processing · On-premise LLM rule generation
 </p>
 
 ---
@@ -15,89 +15,111 @@
 
 - [User & Admin Operation Guide](docs/user-admin-operation-guide.md)
 
-> For testing and daily use, treat [docs/user-admin-operation-guide.md](docs/user-admin-operation-guide.md) as the single source of truth. Other documents may be outdated or intended for internal reference only.
+> For daily use, treat [docs/user-admin-operation-guide.md](docs/user-admin-operation-guide.md) as the single source of truth.
 
 ## ✨ Features
 
-- 🔒 **Smart Masking** - Auto-detect 8 types of sensitive data: IP, MAC, Email, Username, License, etc.
-- 🚀 **High Performance** - 16-thread concurrency, chunked processing, 1GB file in 30 seconds
-- 🎨 **Modern UI** - SUSE brand style, responsive design, smooth animations
-- 📊 **Detailed Reports** - Risk score, category stats, masking examples, JSON export
-- 🔐 **Privacy** - Session isolation, users only access their own data
-- 🐳 **Containerized** - Docker one-click deployment
+- 🔒 **Smart Masking** — Auto-detect 8+ sensitive data types: IP, MAC, Email, Username, License, AWS keys, passwords, JWT, etc.
+- 🚀 **High Performance** — 16-thread concurrency, chunked processing, 1 GB file in under 30 seconds
+- 🎨 **Modern UI** — SUSE brand style, drag-and-drop upload, real-time progress
+- 📊 **Detailed Reports** — Risk score, per-rule match counts, original-vs-masked table with file/line references
+- 🔐 **Multi-tenant** — Three-level permissions: Admin / Org Owner / User; API Key authentication
+- 🤖 **AI Rule Generation** — Describe a pattern in plain English; local LLM (Ollama) generates and tests the regex
 
-## 🚀 Quick Start
+## 🚀 Running the Service
 
-### Option 1: Docker Compose (Recommended)
+### Production server
+
+The service runs on `<SERVER_IP>` — no Docker required.
+
+| Component | Address | Details |
+|-----------|---------|---------|
+| Web UI + API | `http://<SERVER_IP>:8080` | nginx serves `frontend/dist/`, proxies `/api/` → uvicorn |
+| Backend (internal) | `127.0.0.1:8000` | uvicorn, managed by systemd `data-masking.service` |
+| LLM | `127.0.0.1:11434` | Ollama via SSH reverse tunnel from Mac |
 
 ```bash
-cd data-masking-service
+# Check service health
+curl -s http://<SERVER_IP>:8080/api/v1/status | python3 -m json.tool
 
-# Start services
-docker-compose up -d
-
-# Access
-# Frontend: http://localhost:3000
-# API:      http://localhost:8000
+# Verify systemd units
+ssh root@<SERVER_IP> "systemctl is-active data-masking nginx"
 ```
 
-### Option 2: Local Development
+### Local development
 
 **Backend**
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+source venv/bin/activate          # or: python -m venv venv && pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
 **Frontend**
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev                       # Vite dev server at :5173, proxies /api → localhost:8000
+```
+
+**LLM tunnel (optional — needed only for AI rule generation)**
+```bash
+# Run on Mac, keep open while developing
+ollama serve
+ssh -R 11434:127.0.0.1:11434 root@<SERVER_IP> -N
+```
+
+### Deploy to server
+
+```bash
+# Full deploy (code + frontend rebuild)
+git add -A && git commit -m "..." && git push
+ssh root@<SERVER_IP> "
+  cd /opt/data-masking && git fetch origin && git reset --hard origin/main
+  cd frontend && npm install --silent && npm run build
+  systemctl restart data-masking
+"
+
+# Backend-only deploy
+git push
+ssh root@<SERVER_IP> "cd /opt/data-masking && git reset --hard origin/main && systemctl restart data-masking"
 ```
 
 ## 📡 API Reference
 
-Base URL: `http://your-server:8080/api/v1`
+**Base URL:** `http://<SERVER_IP>:8080/api/v1`
 
 ### Authentication
 
-All API requests require a `X-Session-ID` header for user isolation:
+All protected endpoints require an API key in the request header:
 
 ```http
-X-Session-ID: your-unique-session-id
+X-API-Key: dms_your_api_key_here
 ```
 
-> 💡 Session ID is auto-generated in the web interface. For API usage, generate a UUID or use any unique string.
+> Public endpoints (no key required): `GET /status`, `GET /rules`, `GET /session`
+>
+> Generate a key: `python generate_key.py` — or via Admin Console → Keys.
 
 ---
 
 ### 1. Upload and Mask File
 
-Upload a file for sensitive data masking.
-
-**Request**
-
 ```http
 POST /mask
 Content-Type: multipart/form-data
-X-Session-ID: <session-id>
+X-API-Key: <key>
 ```
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `file` | file | ✅ | File to mask (text files, logs, archives: .tar.gz, .tgz, .zip) |
-| `whitelist` | string | ❌ | Comma-separated values to exclude from masking |
-
-**Example**
+| `file` | file | ✅ | File to mask — plain text, logs, configs, or archives (`.tar.gz`, `.tgz`, `.zip`) |
+| `whitelist` | string | ❌ | Comma-separated values to skip (e.g. `localhost,127.0.0.1`) |
 
 ```bash
-curl -X POST "http://10.146.15.188:8080/api/v1/mask" \
-  -H "X-Session-ID: my-session-123" \
-  -F "file=@/path/to/system.log" \
+curl -X POST "http://<SERVER_IP>:8080/api/v1/mask" \
+  -H "X-API-Key: dms_your_key" \
+  -F "file=@system.log" \
   -F "whitelist=localhost,127.0.0.1"
 ```
 
@@ -106,7 +128,7 @@ curl -X POST "http://10.146.15.188:8080/api/v1/mask" \
 ```json
 {
   "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "session_id": "my-session-123",
+  "session_id": "...",
   "status": "pending",
   "filename": "system.log",
   "message": "File uploaded successfully. Processing started."
@@ -117,23 +139,15 @@ curl -X POST "http://10.146.15.188:8080/api/v1/mask" \
 
 ### 2. Get Task Status
 
-Query the processing status and results of a masking task.
-
-**Request**
-
 ```http
 GET /task/{task_id}
-X-Session-ID: <session-id>
+X-API-Key: <key>
 ```
-
-**Example**
 
 ```bash
-curl "http://10.146.15.188:8080/api/v1/task/a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
-  -H "X-Session-ID: my-session-123"
+curl "http://<SERVER_IP>:8080/api/v1/task/a1b2c3d4-..." \
+  -H "X-API-Key: dms_your_key"
 ```
-
-**Response** `200 OK`
 
 ```json
 {
@@ -146,108 +160,82 @@ curl "http://10.146.15.188:8080/api/v1/task/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 | Status | Description |
 |--------|-------------|
-| `pending` | Task queued, waiting for processing |
+| `pending` | Queued, waiting for a worker slot |
 | `processing` | Masking in progress |
-| `completed` | Done, results available |
-| `failed` | Error occurred |
+| `completed` | Done, file and report ready |
+| `failed` | Processing error |
 
 ---
 
 ### 3. Download Masked File
 
-Download the masked (sanitized) file.
-
-**Request**
-
 ```http
 GET /download/{task_id}
-X-Session-ID: <session-id>
+X-API-Key: <key>
 ```
 
-**Example**
-
 ```bash
-curl -O "http://10.146.15.188:8080/api/v1/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
-  -H "X-Session-ID: my-session-123"
+curl -O "http://<SERVER_IP>:8080/api/v1/download/a1b2c3d4-..." \
+  -H "X-API-Key: dms_your_key"
 ```
 
 ---
 
 ### 4. Get Masking Report
 
-Get detailed JSON report of the masking operation.
-
-**Request**
-
 ```http
 GET /report/{task_id}
-X-Session-ID: <session-id>
+X-API-Key: <key>
 ```
-
-**Example**
 
 ```bash
-curl "http://10.146.15.188:8080/api/v1/report/a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
-  -H "X-Session-ID: my-session-123"
+curl "http://<SERVER_IP>:8080/api/v1/report/a1b2c3d4-..." \
+  -H "X-API-Key: dms_your_key"
 ```
+
+Returns a JSON report with risk score, per-category match counts, and an original-vs-masked table with file path and line number for each finding.
 
 ---
 
 ### 5. List My Tasks
 
-Get all tasks for the current session.
-
-**Request**
-
 ```http
 GET /tasks
-X-Session-ID: <session-id>
+X-API-Key: <key>
 ```
 
-**Example**
-
 ```bash
-curl "http://10.146.15.188:8080/api/v1/tasks" \
-  -H "X-Session-ID: my-session-123"
+curl "http://<SERVER_IP>:8080/api/v1/tasks" \
+  -H "X-API-Key: dms_your_key"
 ```
 
 ---
 
 ### 6. Get Masking Rules
 
-Get available masking rules and their configurations.
-
-**Request**
-
 ```http
 GET /rules
 ```
 
-**Example**
+No authentication required.
 
 ```bash
-curl "http://10.146.15.188:8080/api/v1/rules"
+curl "http://<SERVER_IP>:8080/api/v1/rules"
 ```
 
 ---
 
 ### 7. System Status
 
-Check service health and worker status.
-
-**Request**
-
 ```http
 GET /status
 ```
 
-**Example**
+No authentication required.
 
 ```bash
-curl "http://10.146.15.188:8080/api/v1/status"
+curl "http://<SERVER_IP>:8080/api/v1/status"
 ```
-
-**Response** `200 OK`
 
 ```json
 {
@@ -268,88 +256,106 @@ curl "http://10.146.15.188:8080/api/v1/status"
 
 | Code | Description |
 |------|-------------|
-| `400` | Bad Request - Invalid parameters |
-| `403` | Forbidden - Session mismatch |
-| `404` | Not Found - Task not found |
-| `500` | Internal Server Error |
+| `400` | Bad request — invalid parameters |
+| `401` | Missing or invalid `X-API-Key` |
+| `403` | Key disabled, expired, or insufficient role |
+| `404` | Task or resource not found |
+| `500` | Internal server error |
+
+---
+
+### Full masking workflow (shell script)
+
+```bash
+SERVER="http://<SERVER_IP>:8080/api/v1"
+KEY="dms_your_key"
+FILE="system.log"
+
+# 1. Upload
+TASK_ID=$(curl -s -X POST "$SERVER/mask" \
+  -H "X-API-Key: $KEY" -F "file=@$FILE" | jq -r .task_id)
+
+# 2. Poll until done
+while [[ $(curl -s "$SERVER/task/$TASK_ID" -H "X-API-Key: $KEY" | jq -r .status) != "completed" ]]; do
+  sleep 2
+done
+
+# 3. Download
+curl -s -O "$SERVER/download/$TASK_ID" -H "X-API-Key: $KEY"
+echo "Done."
+```
 
 ## 🔧 Masking Rules
 
-| Rule | Type | Example | Masked |
-|------|------|---------|--------|
-| IPv4 Address | Network | `192.168.1.100` | `[IPv4]` |
-| IPv6 Address | Network | `2001:db8::1` | `[IPv6]` |
-| MAC Address | Device | `aa:bb:cc:dd:ee:ff` | `[MAC]` |
-| Email Address | Personal | `user@suse.com` | `[EMAIL]` |
-| Path Username | System | `/home/john/` | `/home/[USER]` |
-| License Key | Secret | `XXXX-YYYY-ZZZZ` | `[LICENSE]` |
-| Hostname | System | `sles15-test-01` | `[HOSTNAME]` |
-| Username | Personal | `user=admin` | `[USERNAME]` |
+| Rule | Category | Example | Masked As |
+|------|----------|---------|-----------|
+| IPv4 Address | Network | `192.168.1.100` | `[IP_ADDRESS]` |
+| IPv6 Address | Network | `2001:db8::1` | `[IP_ADDRESS]` |
+| MAC Address | Network | `aa:bb:cc:dd:ee:ff` | `[MAC_ADDRESS]` |
+| Email Address | Identity | `user@suse.com` | `[EMAIL]` |
+| Username | Identity | `user=admin` | `[USERNAME]` |
+| Password field | Credential | `password=S3cr3t` | `[PASSWORD]` |
+| SSH Private Key | Credential | `-----BEGIN RSA...` | `[SSH_PRIVATE_KEY]` |
+| AWS Access Key | Cloud Key | `AKIAIOSFODNN7...` | `[AWS_ACCESS_KEY]` |
+| JWT Token | Credential | `eyJhbGci...` | `[JWT_TOKEN]` |
+| License Key | License | `Regcode-ABCDE` | `[LICENSE_KEY]` |
+| Credit Card | Financial | `4111 1111 1111 1111` | `[CREDIT_CARD]` |
+
+Custom rules can be added via Admin Console or generated using the AI assistant (`llm_add_rule.py`).
 
 ## 📊 Risk Score
 
-Risk score is calculated based on sensitive data types and counts:
-
-| Level | Score Range | Description |
-|-------|-------------|-------------|
-| 🟢 LOW | 0-29 | Low risk, safe to share |
-| 🟡 MEDIUM | 30-59 | Medium risk, review recommended |
-| 🔴 HIGH | 60-100 | High risk, careful review needed |
+| Level | Score | Description |
+|-------|-------|-------------|
+| 🟢 LOW | 0–29 | Low risk, generally safe to share |
+| 🟡 MEDIUM | 30–59 | Review recommended before sharing |
+| 🔴 HIGH | 60–100 | Contains highly sensitive data |
 
 ## 🏗️ Project Structure
 
 ```
-data-masking-service/
-├── backend/
-│   ├── app/
-│   │   ├── api/           # API routes
-│   │   │   ├── mask.py    # Masking endpoints
-│   │   │   └── status.py  # Status endpoints
-│   │   ├── core/          # Core modules
-│   │   │   ├── executor.py # Thread pool
-│   │   │   └── session.py  # Session management
-│   │   ├── engine/        # Masking engine
-│   │   │   ├── masker.py  # Masking processor
-│   │   │   └── rules.py   # Rule definitions
-│   │   └── main.py        # App entry
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── services/      # API services
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   ├── Dockerfile
-│   └── package.json
-├── docker-compose.yml
-└── README.md
+backend/
+  app/
+    api/          # FastAPI routers: keys, llm, mask, orgs, rules, status
+    core/         # auth, executor, key_service, permissions, session
+    engine/       # db, masker, repo_*, rule_service, rules, archive
+    main.py
+  tests/          # pytest — 219 tests
+  requirements.txt
+frontend/
+  src/
+    components/   # AdminConsole, AiRegexPanel, FileUpload, Header, Modal,
+                  # MyOrg, ResultView, RuleList, Settings, SuggestRule, TaskList
+    hooks/        # useAiRegex, useModalA11y
+    services/     # api.ts
+  e2e/            # Playwright smoke tests — 39 tests
 ```
 
-## 🔐 Privacy Design
+## 🔐 Permission Model
 
-- **Session Isolation** - Each user gets unique Session ID
-- **Data Isolation** - Users only access their own files and reports
-- **Auto Cleanup** - Sessions expire after 2 hours, data auto-deleted
-- **Local Processing** - All data processed locally, never leaves network
+| Role | Capabilities |
+|------|-------------|
+| `admin` | Manage all keys, rules, orgs; approve AI suggestions |
+| `org_owner` | Manage their org's rules and users |
+| `user` | Upload files, view own tasks, submit AI rule suggestions |
 
 ## 🛠️ Tech Stack
 
-**Backend**
-- FastAPI - High-performance Python web framework
-- ThreadPoolExecutor - 16-thread concurrent processing
-- uvicorn - ASGI server
+**Backend:** FastAPI · SQLite · uvicorn · Python `ThreadPoolExecutor` (16 threads)
 
-**Frontend**
-- React 18 + TypeScript
-- Tailwind CSS - SUSE brand colors
-- Framer Motion - Smooth animations
-- Recharts - Data visualization
-- react-dropzone - File upload
+**Frontend:** React 18 + TypeScript · Vite · Tailwind CSS
 
-**Deployment**
-- Docker + Docker Compose
-- Nginx reverse proxy
+**Infrastructure:** nginx (`:8080`) · systemd · Ollama (`qwen2.5-coder:7b`) via SSH tunnel
+
+## 🧪 Testing
+
+```bash
+# Unit + integration tests
+cd backend && python -m pytest tests/ -q    # 219 tests
+
+# E2E tests (requires server at <SERVER_IP>:8080)
+cd frontend && npx playwright test e2e/smoke.spec.ts --reporter=line   # 39 tests
+```
 
 ## 📝 License
 

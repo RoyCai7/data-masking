@@ -1,10 +1,11 @@
+import os
 import requests
 import json
 import sys
 import time
 
-BASE = "http://127.0.0.1:8000/api/v1"
-ADMIN_KEY = "dms_3be8006031f045d3aafdc6c78282f2e4"
+BASE = os.getenv("DMS_SERVER", "http://127.0.0.1:8000") + "/api/v1"
+ADMIN_KEY = os.getenv("DMS_ADMIN_KEY", "")
 HEADERS = {"X-API-Key": ADMIN_KEY, "Content-Type": "application/json"}
 
 passed = 0

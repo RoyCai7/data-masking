@@ -2,13 +2,14 @@
 """
 Usage: python3 mask_file.py <input_file> [output_file]
 """
+import os
 import sys
 import json
 import time
 import subprocess
 
-API_BASE = "http://10.146.15.188:8080/api/v1"
-API_KEY  = "dms_3be8006031f045d3aafdc6c78282f2e4"
+API_BASE = os.getenv("DMS_SERVER", "http://localhost:8080") + "/api/v1"
+API_KEY  = os.getenv("DMS_ADMIN_KEY", "")
 
 def curl(args):
     result = subprocess.run(["curl", "-s"] + args, capture_output=True, text=True)

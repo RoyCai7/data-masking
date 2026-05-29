@@ -7,13 +7,13 @@
 # Options:
 #   -f <file>        File to mask (required)
 #   -k <api_key>     API key (required)
-#   -s <server>      Server base URL (default: http://10.146.15.188:8080)
+#   -s <server>      Server base URL (default: http://<SERVER_IP>:8080)
 #   -w <whitelist>   Comma-separated whitelist values (default: none)
 #   -i <session_id>  Session ID (default: auto-generated UUID)
 #   -h               Show this help message
 #
 # Examples:
-#   ./mask_api.sh -f test_data.txt -k dms_3be8006031f045d3aafdc6c78282f2e4
+#   ./mask_api.sh -f test_data.txt -k <YOUR_API_KEY>
 #   ./mask_api.sh -f secrets.log -k dms_mykey -w "localhost,127.0.0.1"
 #   ./mask_api.sh -f data.txt -k dms_mykey -s http://myserver:8080
 
@@ -21,7 +21,7 @@ set -euo pipefail
 
 # Defaults
 API_KEY=""
-SERVER="http://10.146.15.188:8080"
+SERVER="http://<SERVER_IP>:8080"
 WHITELIST=""
 SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 FILE=""

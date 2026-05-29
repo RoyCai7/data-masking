@@ -25,19 +25,19 @@
 
 生产环境访问地址：
 
-- `http://10.146.15.188:8080`
+- `http://<SERVER_IP>:8080`
 
 ### 2.2 API 入口
 
 API Base URL：
 
-- `http://10.146.15.188:8080/api/v1`
+- `http://<SERVER_IP>:8080/api/v1`
 
 ### 2.3 Swagger 文档
 
 交互式 API 文档：
 
-- `http://10.146.15.188:8080/docs`
+- `http://<SERVER_IP>:8080/docs`
 
 ---
 
@@ -143,7 +143,7 @@ X-API-Key: dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 访问：
 
-- `http://10.146.15.188:8080`
+- `http://<SERVER_IP>:8080`
 
 如需执行上传、查询任务、下载结果等操作，请先在页面右上角 `Key` 中保存有效的 API Key。
 
@@ -276,7 +276,7 @@ localhost,127.0.0.1,my-test-domain
 ### 5.5.1 创建会话（可选）
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/session
+curl -X POST http://<SERVER_IP>:8080/api/v1/session
 ```
 
 返回：
@@ -291,7 +291,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/session
 ### 5.5.2 上传文件
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/mask \
+curl -X POST http://<SERVER_IP>:8080/api/v1/mask \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -F "file=@./sample.log" \
@@ -313,7 +313,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/mask \
 ### 5.5.3 查询任务状态
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/task/<task_id> \
+curl http://<SERVER_IP>:8080/api/v1/task/<task_id> \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
@@ -321,7 +321,7 @@ curl http://10.146.15.188:8080/api/v1/task/<task_id> \
 ### 5.5.4 列出当前会话全部任务
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/tasks \
+curl http://<SERVER_IP>:8080/api/v1/tasks \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
@@ -329,7 +329,7 @@ curl http://10.146.15.188:8080/api/v1/tasks \
 ### 5.5.5 下载脱敏文件
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/download/<task_id> \
+curl http://<SERVER_IP>:8080/api/v1/download/<task_id> \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -o masked_output.dat
@@ -338,7 +338,7 @@ curl http://10.146.15.188:8080/api/v1/download/<task_id> \
 ### 5.5.6 获取 JSON 报告
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/report/<task_id> \
+curl http://<SERVER_IP>:8080/api/v1/report/<task_id> \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>"
 ```
@@ -356,13 +356,13 @@ curl http://10.146.15.188:8080/api/v1/report/<task_id> \
 ### 查看系统状态
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/status
+curl http://<SERVER_IP>:8080/api/v1/status
 ```
 
 ### 查看规则列表
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules
+curl http://<SERVER_IP>:8080/api/v1/rules
 ```
 
 说明：
@@ -374,7 +374,7 @@ curl http://10.146.15.188:8080/api/v1/rules
 示例：
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/ipv4 \
+curl http://<SERVER_IP>:8080/api/v1/rules/ipv4 \
   -H "X-API-Key: <your_api_key>"
 ```
 
@@ -387,7 +387,7 @@ curl http://10.146.15.188:8080/api/v1/rules/ipv4 \
 ### 提交新规则建议
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your_api_key>" \
   -d '{
@@ -406,7 +406,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
 ### 提交修改建议
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your_api_key>" \
   -d '{
@@ -420,7 +420,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules/suggestions \
 ### 查看自己提交的建议
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "X-API-Key: <your_api_key>"
 ```
 
@@ -482,7 +482,7 @@ python generate_key.py create --name "Admin User" --role admin
 ### 创建新用户 key
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/keys \
+curl -X POST http://<SERVER_IP>:8080/api/v1/keys \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -495,7 +495,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/keys \
 ### 创建新管理员 key
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/keys \
+curl -X POST http://<SERVER_IP>:8080/api/v1/keys \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -508,14 +508,14 @@ curl -X POST http://10.146.15.188:8080/api/v1/keys \
 ### 查看所有 key
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/keys \
+curl http://<SERVER_IP>:8080/api/v1/keys \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### 禁用某个 key
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/keys/disable \
+curl -X POST http://<SERVER_IP>:8080/api/v1/keys/disable \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -530,25 +530,25 @@ curl -X POST http://10.146.15.188:8080/api/v1/keys/disable \
 ### 查看全部规则
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules
+curl http://<SERVER_IP>:8080/api/v1/rules
 ```
 
 ### 只看启用规则
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules?enabled_only=true'
+curl 'http://<SERVER_IP>:8080/api/v1/rules?enabled_only=true'
 ```
 
 ### 按分类查看
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules?category=network'
+curl 'http://<SERVER_IP>:8080/api/v1/rules?category=network'
 ```
 
 ### 查看单条规则详情
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/aws_access_key \
+curl http://<SERVER_IP>:8080/api/v1/rules/aws_access_key \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -562,7 +562,7 @@ curl http://10.146.15.188:8080/api/v1/rules/aws_access_key \
 ## 6.5 管理员 API：创建规则
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -595,7 +595,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules \
 ## 6.6 管理员 API：更新规则
 
 ```bash
-curl -X PUT http://10.146.15.188:8080/api/v1/rules/k8s_secret_token \
+curl -X PUT http://<SERVER_IP>:8080/api/v1/rules/k8s_secret_token \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -615,7 +615,7 @@ curl -X PUT http://10.146.15.188:8080/api/v1/rules/k8s_secret_token \
 ## 6.7 管理员 API：启用 / 禁用规则
 
 ```bash
-curl -X PATCH http://10.146.15.188:8080/api/v1/rules/k8s_secret_token/toggle \
+curl -X PATCH http://<SERVER_IP>:8080/api/v1/rules/k8s_secret_token/toggle \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -629,7 +629,7 @@ curl -X PATCH http://10.146.15.188:8080/api/v1/rules/k8s_secret_token/toggle \
 ## 6.8 管理员 API：删除规则
 
 ```bash
-curl -X DELETE http://10.146.15.188:8080/api/v1/rules/k8s_secret_token \
+curl -X DELETE http://<SERVER_IP>:8080/api/v1/rules/k8s_secret_token \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -645,7 +645,7 @@ curl -X DELETE http://10.146.15.188:8080/api/v1/rules/k8s_secret_token \
 ### 导出全部规则
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules-export \
+curl http://<SERVER_IP>:8080/api/v1/rules-export \
   -H "X-API-Key: <admin_api_key>" \
   -o rules-export.json
 ```
@@ -653,7 +653,7 @@ curl http://10.146.15.188:8080/api/v1/rules-export \
 ### 导入规则
 
 ```bash
-curl -X POST http://10.146.15.188:8080/api/v1/rules-import \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules-import \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   --data @rules-export.json
@@ -672,21 +672,21 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules-import \
 ### 查看全部建议
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/suggestions \
+curl http://<SERVER_IP>:8080/api/v1/rules/suggestions \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### 只看待审批建议
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules/suggestions?status=pending' \
+curl 'http://<SERVER_IP>:8080/api/v1/rules/suggestions?status=pending' \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### 审批通过
 
 ```bash
-curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
+curl -X PATCH http://<SERVER_IP>:8080/api/v1/rules/suggestions/1 \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{"action": "approve"}'
@@ -695,7 +695,7 @@ curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
 ### 拒绝建议
 
 ```bash
-curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
+curl -X PATCH http://<SERVER_IP>:8080/api/v1/rules/suggestions/1 \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{"action": "reject"}'
@@ -713,14 +713,14 @@ curl -X PATCH http://10.146.15.188:8080/api/v1/rules/suggestions/1 \
 ### 查看最近 50 条变更
 
 ```bash
-curl http://10.146.15.188:8080/api/v1/rules/changelog \
+curl http://<SERVER_IP>:8080/api/v1/rules/changelog \
   -H "X-API-Key: <admin_api_key>"
 ```
 
 ### 查看某条规则的变更历史
 
 ```bash
-curl 'http://10.146.15.188:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
+curl 'http://<SERVER_IP>:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
   -H "X-API-Key: <admin_api_key>"
 ```
 
@@ -860,13 +860,13 @@ backend/rules.db
 
 ```bash
 # 查看状态
-curl http://10.146.15.188:8080/api/v1/status
+curl http://<SERVER_IP>:8080/api/v1/status
 
 # 创建 session
-curl -X POST http://10.146.15.188:8080/api/v1/session
+curl -X POST http://<SERVER_IP>:8080/api/v1/session
 
 # 上传文件
-curl -X POST http://10.146.15.188:8080/api/v1/mask \
+curl -X POST http://<SERVER_IP>:8080/api/v1/mask \
   -H "X-API-Key: <your_api_key>" \
   -H "X-Session-ID: <session_id>" \
   -F "file=@./sample.log"
@@ -876,10 +876,10 @@ curl -X POST http://10.146.15.188:8080/api/v1/mask \
 
 ```bash
 # 查看规则
-curl http://10.146.15.188:8080/api/v1/rules
+curl http://<SERVER_IP>:8080/api/v1/rules
 
 # 创建规则
-curl -X POST http://10.146.15.188:8080/api/v1/rules \
+curl -X POST http://<SERVER_IP>:8080/api/v1/rules \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <admin_api_key>" \
   -d '{
@@ -894,7 +894,7 @@ curl -X POST http://10.146.15.188:8080/api/v1/rules \
   }'
 
 # 导出规则
-curl http://10.146.15.188:8080/api/v1/rules-export \
+curl http://<SERVER_IP>:8080/api/v1/rules-export \
   -H "X-API-Key: <admin_api_key>" \
   -o rules-export.json
 ```

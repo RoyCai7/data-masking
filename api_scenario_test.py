@@ -15,11 +15,11 @@ Verified response shapes:
   /task/{id}       → {task_id,filename,status,report:{report_id,summary,breakdown}}
 """
 
-import requests, sys, time, io
+import os, requests, sys, time, io
 
-BASE = "http://10.146.15.188:8080/api/v1"
-WEB  = "http://10.146.15.188:8080"
-ADMIN_KEY = "dms_3be8006031f045d3aafdc6c78282f2e4"
+BASE = os.getenv("DMS_SERVER", "http://localhost:8080") + "/api/v1"
+WEB  = os.getenv("DMS_SERVER", "http://localhost:8080")
+ADMIN_KEY = os.getenv("DMS_ADMIN_KEY", "")
 AH = {"X-API-Key": ADMIN_KEY}
 AJ = {**AH, "Content-Type": "application/json"}
 

@@ -43,7 +43,7 @@ def cmd_create(args):
     print(f"  Expires:    {key_data['expires_at']}")
     print()
     print("  Usage:")
-    print(f'  curl -H "X-API-Key: {key_data["key"]}" http://10.146.15.188:8080/api/v1/tasks')
+    print(f'  curl -H "X-API-Key: {key_data["key"]}" http://<SERVER_IP>:8080/api/v1/tasks')
     print()
     print("  ⚠️  Save this key now — it cannot be retrieved later!")
     print("=" * 60)
