@@ -743,12 +743,6 @@ If the variable is not set, the code default is:
 backend/rules.db
 ```
 
-The current Docker Compose deployment uses:
-
-```text
-/app/data/rules.db
-```
-
 ### Stored tables
 
 The database mainly contains three tables:

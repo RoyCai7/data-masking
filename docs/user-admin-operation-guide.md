@@ -743,12 +743,6 @@ curl 'http://<SERVER_IP>:8080/api/v1/rules/changelog?rule_id=ipv4&limit=20' \
 backend/rules.db
 ```
 
-当前 Docker Compose 部署配置为：
-
-```text
-/app/data/rules.db
-```
-
 ### 存储内容
 
 数据库中主要有三张表：
