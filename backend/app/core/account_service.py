@@ -110,6 +110,17 @@ def _require_email_delivery() -> None:
         raise HTTPException(status_code=503, detail=f"Email delivery is not configured: {config_error}")
 
 
+def _require_valid_token_row(row: Optional[dict], token_name: str) -> dict:
+    if not row or row.get("used"):
+        raise HTTPException(status_code=400, detail=f"Invalid or used {token_name}")
+    try:
+        if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail=f"{token_name.capitalize()} has expired")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"{token_name.capitalize()} has invalid expiry")
+    return row
+
+
 def _session_auth_user(row: dict) -> dict:
     user_id = int(row["user_id"])
     return {
@@ -205,14 +216,7 @@ def login_user(email: str, password: str) -> dict:
 
 
 def verify_email(token: str) -> dict:
-    row = db_get_email_verification(_hash_token(token or ""))
-    if not row or row.get("used"):
-        raise HTTPException(status_code=400, detail="Invalid or used activation link")
-    try:
-        if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="Activation link has expired")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Activation link has invalid expiry")
+    row = _require_valid_token_row(db_get_email_verification(_hash_token(token or "")), "activation link")
 
     user_id = int(row["user_id"])
     db_mark_user_email_verified(user_id)
@@ -267,14 +271,7 @@ def create_password_reset(email: str) -> dict:
 
 def reset_password(token: str, new_password: str) -> dict:
     validate_password(new_password)
-    row = db_get_password_reset(_hash_token(token or ""))
-    if not row or row.get("used"):
-        raise HTTPException(status_code=400, detail="Invalid or used reset token")
-    try:
-        if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="Reset token has expired")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Reset token has invalid expiry")
+    row = _require_valid_token_row(db_get_password_reset(_hash_token(token or "")), "reset token")
 
     user_id = int(row["user_id"])
     db_update_user_password(user_id, hash_password(new_password))
