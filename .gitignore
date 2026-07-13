@@ -44,6 +44,7 @@ backend/rules.db
 
 # Temp files
 /tmp/
+.local-test-env/
 *.tmp
 docs/*.pdf
 mask.py

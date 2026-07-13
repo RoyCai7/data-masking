@@ -27,21 +27,19 @@ const getSessionId = (): string => {
   return sessionId;
 };
 
-// Get or set API Key
-export const getApiKey = (): string => {
-  return localStorage.getItem('dms-api-key') || '';
+export const getSessionToken = (): string => {
+  return localStorage.getItem('dms-session-token') || '';
 };
 
-export const setApiKey = (key: string): void => {
-  localStorage.setItem('dms-api-key', key);
-  // Update default header immediately
-  api.defaults.headers.common['X-API-Key'] = key;
+export const setSessionToken = (token: string): void => {
+  localStorage.setItem('dms-session-token', token);
+  api.defaults.headers.common['X-Session-Token'] = token;
   window.dispatchEvent(new CustomEvent('auth-state-changed'));
 };
 
-export const clearApiKey = (): void => {
-  localStorage.removeItem('dms-api-key');
-  delete api.defaults.headers.common['X-API-Key'];
+export const clearSessionToken = (): void => {
+  localStorage.removeItem('dms-session-token');
+  delete api.defaults.headers.common['X-Session-Token'];
   window.dispatchEvent(new CustomEvent('auth-state-changed'));
 };
 
@@ -55,9 +53,9 @@ const api = axios.create({
 // Update headers on each request
 api.interceptors.request.use((config) => {
   config.headers['X-Session-ID'] = getSessionId();
-  const apiKey = getApiKey();
-  if (apiKey) {
-    config.headers['X-API-Key'] = apiKey;
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    config.headers['X-Session-Token'] = sessionToken;
   }
   return config;
 });
@@ -360,6 +358,7 @@ export const getSystemStatus = async (): Promise<SystemStatus> => {
 
 export interface KeyInfo {
   name: string;
+  email?: string;
   role: string;
   org_id: string;
   is_org_owner: boolean;
@@ -368,23 +367,58 @@ export interface KeyInfo {
   key_preview: string;
 }
 
-export interface RotateKeyResponse {
-  message: string;
-  new_key: string;
+export interface AuthUser {
+  id?: number;
+  user_id?: number;
+  email: string;
   name: string;
   role: string;
-  created_at: string;
-  expires_at: string;
-  warning: string;
+  org_id: string;
+  enabled?: boolean;
+  created_at?: string;
 }
 
-export interface EmailTokenResponse {
+export interface AuthResponse {
+  token: string;
+  expires_at: string;
+  user: AuthUser;
+}
+
+export interface RegisterResponse {
   message: string;
   email: string;
-  created: boolean;
   email_sent: boolean;
   delivery_detail: string;
-  key?: string | null;
+  user: AuthUser;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  email: string;
+  email_sent: boolean;
+  delivery_detail: string;
+}
+
+export interface AccountTokenInfo {
+  id: number;
+  name: string;
+  role: string;
+  org_id: string;
+  enabled: boolean;
+  created_at: string;
+  expires_at: string;
+  key_preview: string;
+}
+
+export interface CreateAccountTokenResponse {
+  message: string;
+  id: number;
+  key: string;
+  name: string;
+  role: string;
+  org_id: string;
+  created_at: string;
+  expires_at: string;
 }
 
 export const getMyKeyInfo = async (): Promise<KeyInfo> => {
@@ -392,28 +426,57 @@ export const getMyKeyInfo = async (): Promise<KeyInfo> => {
   return response.data;
 };
 
-export const rotateMyKey = async (): Promise<RotateKeyResponse> => {
-  const response = await api.post('/keys/rotate');
-  // Auto-update stored key
-  if (response.data.new_key) {
-    setApiKey(response.data.new_key);
+export const registerAccount = async (payload: { email: string; password: string; name?: string }): Promise<RegisterResponse> => {
+  const response = await api.post('/auth/register', payload);
+  return response.data;
+};
+
+export const loginAccount = async (payload: { email: string; password: string }): Promise<AuthResponse> => {
+  const response = await api.post('/auth/login', payload);
+  if (response.data.token) {
+    setSessionToken(response.data.token);
   }
   return response.data;
 };
 
-export const registerTokenByEmail = async (email: string): Promise<EmailTokenResponse> => {
-  const response = await api.post('/email-token/register', { email });
-  if (response.data.key) {
-    setApiKey(response.data.key);
+export const verifyEmail = async (token: string): Promise<AuthResponse> => {
+  const response = await api.post('/auth/verify-email', { token });
+  if (response.data.token) {
+    setSessionToken(response.data.token);
   }
   return response.data;
 };
 
-export const recoverTokenByEmail = async (email: string): Promise<EmailTokenResponse> => {
-  const response = await api.post('/email-token/recover', { email });
-  if (response.data.key) {
-    setApiKey(response.data.key);
+export const logoutAccount = async (): Promise<void> => {
+  try {
+    await api.post('/auth/logout');
+  } finally {
+    clearSessionToken();
   }
+};
+
+export const forgotPassword = async (email: string): Promise<ForgotPasswordResponse> => {
+  const response = await api.post('/auth/forgot-password', { email });
+  return response.data;
+};
+
+export const resetPassword = async (token: string, newPassword: string): Promise<{ message: string }> => {
+  const response = await api.post('/auth/reset-password', { token, new_password: newPassword });
+  return response.data;
+};
+
+export const listAccountTokens = async (): Promise<{ total: number; tokens: AccountTokenInfo[] }> => {
+  const response = await api.get('/account/tokens');
+  return response.data;
+};
+
+export const createAccountToken = async (payload: { name: string; expires_days: number }): Promise<CreateAccountTokenResponse> => {
+  const response = await api.post('/account/tokens', payload);
+  return response.data;
+};
+
+export const disableAccountToken = async (tokenId: number): Promise<{ message: string }> => {
+  const response = await api.post(`/account/tokens/${tokenId}/disable`);
   return response.data;
 };
 

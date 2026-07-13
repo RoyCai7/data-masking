@@ -20,6 +20,7 @@ from app.engine.rule_service import rule_service
 from app.engine.repository import is_org_owner, get_org_owners, add_org_owner, remove_org_owner, db_get_all_keys
 from app.core.key_service import update_key
 from app.core.permissions import require_admin, require_auth, get_auth_user
+from app.engine.repo_users import db_update_user_org
 
 router = APIRouter()
 
@@ -32,6 +33,18 @@ def _get_auth_user(request: Request, require: bool = True) -> Optional[dict]:
 
 def _require_admin(request: Request):
     require_admin(request)
+
+
+def _move_auth_principal_to_org(request: Request, auth_user: Optional[dict], org_id: str) -> None:
+    if not auth_user:
+        return
+    if auth_user.get("auth_type") == "session" and auth_user.get("user_id"):
+        db_update_user_org(int(auth_user["user_id"]), org_id)
+        auth_user["org_id"] = org_id
+        return
+    caller_key = request.headers.get("X-API-Key", "")
+    if caller_key:
+        update_key(caller_key, org_id=org_id)
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -110,9 +123,7 @@ async def create_org(body: OrgCreate, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
     # Move the creator's key into this new org
-    if auth_user:
-        caller_key = request.headers.get("X-API-Key", "")
-        update_key(caller_key, org_id=body.id)
+    _move_auth_principal_to_org(request, auth_user, body.id)
 
     # Auto-generate first invite code
     code = secrets.token_urlsafe(8)
@@ -227,8 +238,7 @@ async def join_org(body: JoinOrgRequest, request: Request):
     if not org:
         raise HTTPException(status_code=404, detail="Invalid or expired invite code")
 
-    caller_key = request.headers.get("X-API-Key", "")
-    update_key(caller_key, org_id=org["id"])
+    _move_auth_principal_to_org(request, auth_user, org["id"])
     return {"message": f"Welcome to '{org['name']}'!", "org_id": org["id"], "org_name": org["name"]}
 
 
@@ -257,6 +267,5 @@ async def leave_org(request: Request):
         # Remove themselves from the owner list when they leave
         remove_org_owner(current_org_id, caller_prefix)
 
-    caller_key = request.headers.get("X-API-Key", "")
-    update_key(caller_key, org_id="default")
+    _move_auth_principal_to_org(request, auth_user, "default")
     return {"message": f"You have left '{current_org_id}' and returned to the default org."}

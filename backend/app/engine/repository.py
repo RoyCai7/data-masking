@@ -57,7 +57,6 @@ from app.engine.repo_keys import (  # noqa: F401
     db_add_key,
     db_get_key_plain_by_id,
     db_get_key_by_hash,
-    db_get_key_by_email,
     db_get_all_keys,
     db_update_key_by_id,
     db_update_key,

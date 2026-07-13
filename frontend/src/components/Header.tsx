@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { KeyIcon, LightBulbIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
-import { getApiKey, getMyKeyInfo, KeyInfo } from '../services/api';
+import { getSessionToken, getMyKeyInfo, KeyInfo } from '../services/api';
 import AdminConsole from './AdminConsole';
 import Settings from './Settings';
 import SuggestRule from './SuggestRule';
@@ -25,7 +25,7 @@ export default function Header() {
   const [showMyOrg, setShowMyOrg] = useState(false);
 
   const refreshKeyInfo = useCallback(async () => {
-    if (!getApiKey()) {
+    if (!getSessionToken()) {
       setKeyInfo(null);
       return;
     }
@@ -40,6 +40,10 @@ export default function Header() {
 
   useEffect(() => {
     refreshKeyInfo();
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('reset_token') || params.has('verify_token')) {
+      setShowSettings(true);
+    }
   }, [refreshKeyInfo]);
 
   // Listen for 401 auth errors to auto-open Settings
@@ -118,7 +122,7 @@ export default function Header() {
               title="API Key Settings"
             >
               <KeyIcon className="w-4 h-4" />
-              <span>Key</span>
+              <span>{keyInfo ? 'Account' : 'Sign in'}</span>
             </button>
 
             <a

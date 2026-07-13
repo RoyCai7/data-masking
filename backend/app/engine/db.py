@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS rule_changelog (
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER,
     key_hash   TEXT NOT NULL UNIQUE,
     key_prefix TEXT NOT NULL,
     key_plain  TEXT,
@@ -127,6 +128,49 @@ CREATE TABLE IF NOT EXISTS api_keys (
     enabled    INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     expires_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    email         TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    role          TEXT NOT NULL DEFAULT 'user',
+    org_id        TEXT NOT NULL DEFAULT 'default',
+    enabled       INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    used       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    used       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
 -- ── Indices ──────────────────────────────────────────────────────────────────
@@ -149,6 +193,9 @@ CREATE INDEX IF NOT EXISTS idx_changelog_rule_id
 -- Suggestions: filter by status (pending/approved/rejected)
 CREATE INDEX IF NOT EXISTS idx_suggestions_status
     ON rule_suggestions (status, submitted_at);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id
+    ON user_sessions (user_id);
 
 """
 
@@ -379,6 +426,68 @@ def init_db():
         conn.commit()
     except Exception as e:
         logger.warning(f"Migration 16: email index creation failed: {e}")
+
+    # 17. User accounts, web sessions, password reset tokens, account-owned API keys
+    try:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN user_id INTEGER")
+        conn.commit()
+        logger.info("Migration 17: added 'user_id' column to api_keys")
+    except Exception:
+        pass
+    try:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                email         TEXT NOT NULL UNIQUE,
+                name          TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                email_verified INTEGER NOT NULL DEFAULT 0,
+                role          TEXT NOT NULL DEFAULT 'user',
+                org_id        TEXT NOT NULL DEFAULT 'default',
+                enabled       INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                used       INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                enabled    INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                expires_at TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                used       INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys (user_id);
+            CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);
+        """)
+        conn.commit()
+        logger.info("Migration 17: user account tables ready")
+    except Exception as e:
+        logger.warning(f"Migration 17: user account table setup failed: {e}")
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Migration 18: added 'email_verified' column to users")
+    except Exception:
+        pass
 
     logger.info(f"Rules database initialized at {DB_PATH}")
 

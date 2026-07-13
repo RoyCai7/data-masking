@@ -55,8 +55,11 @@ PUBLIC_PATHS = frozenset({
     "/api/v1/status",
     "/api/v1/rules",
     "/api/v1/session",
-    "/api/v1/email-token/register",
-    "/api/v1/email-token/recover",
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/verify-email",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -106,7 +109,18 @@ def validate_key(api_key: str) -> dict:
 
     # Inject a stable key_prefix so callers can generate previews without plaintext
     key_data.setdefault("key_prefix", api_key[:8])
+    key_data.setdefault("auth_type", "api_key")
     return key_data
+
+
+def _extract_session_token(request: Request) -> Optional[str]:
+    token = request.headers.get("X-Session-Token")
+    if token:
+        return token
+    authorization = request.headers.get("Authorization", "")
+    if authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip()
+    return None
 
 
 def _is_public_path(path: str) -> bool:
@@ -142,9 +156,16 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         # Extract API key (header only — never from query params for security)
         api_key = request.headers.get("X-API-Key")
+        session_token = _extract_session_token(request)
 
         if _is_public_path(path):
             # Public paths: optionally validate credentials if provided
+            if session_token:
+                try:
+                    from app.core.account_service import validate_session_token
+                    request.state.auth_user = validate_session_token(session_token)
+                except HTTPException:
+                    pass
             if api_key:
                 try:
                     key_data = validate_key(api_key)
@@ -153,20 +174,23 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     pass  # Optional auth — don't block on invalid key
             return await call_next(request)
 
-        # Protected path — require valid key
-        if not api_key:
+        # Protected path — require a valid web session or API key
+        if not api_key and not session_token:
             return JSONResponse(
                 status_code=401,
                 content={
-                    "detail": "Authentication required. Provide X-API-Key header.",
-                    "docs": "See /api/v1/status for service info. Use generate_key.py to create an API key."
+                    "detail": "Authentication required. Sign in or provide X-API-Key header.",
+                    "docs": "Use /api/v1/auth/login for web sessions or an API token for external calls."
                 }
             )
 
         try:
-            key_data = validate_key(api_key)
-            # Inject authenticated user info into request state
-            request.state.auth_user = key_data
+            if session_token:
+                from app.core.account_service import validate_session_token
+                request.state.auth_user = validate_session_token(session_token)
+            else:
+                key_data = validate_key(api_key)
+                request.state.auth_user = key_data
         except HTTPException as e:
             return JSONResponse(
                 status_code=e.status_code,

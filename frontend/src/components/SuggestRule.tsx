@@ -6,7 +6,7 @@ import {
   XMarkIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { submitRuleSuggestion, getRulesDetailed, getMyKeyInfo, getApiKey, RuleDetail } from '../services/api';
+import { submitRuleSuggestion, getRulesDetailed, getMyKeyInfo, getSessionToken, RuleDetail } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
 import { useAiRegex } from '../hooks/useAiRegex';
 import AiRegexPanel from './AiRegexPanel';
@@ -53,7 +53,7 @@ export default function SuggestRule({ onClose }: SuggestRuleProps) {
   });
 
   useEffect(() => {
-    if (!getApiKey()) return;
+    if (!getSessionToken()) return;
     getMyKeyInfo().then((info) => {
       setIsAdmin(info.role === 'admin');
       setIsOrgOwner(info.is_org_owner === true);

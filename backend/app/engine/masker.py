@@ -87,7 +87,7 @@ class MaskingEngine:
         """
         Mask sensitive content with parallel processing for large files
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         if rules is None:
             rules = get_enabled_rules()
@@ -180,7 +180,7 @@ class MaskingEngine:
         risk_score = self._calculate_risk_score(stats_map, all_rules, total_lines)
         risk_level = self._get_risk_level(risk_score)
         
-        processing_time_ms = (time.time() - start_time) * 1000
+        processing_time_ms = max((time.perf_counter() - start_time) * 1000, 0.01)
 
         # Track which rules actually fired — bump use_count asynchronously
         matched_rule_ids = [s.rule_id for s in stats_map.values() if s.matches > 0]

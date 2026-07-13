@@ -20,6 +20,8 @@ from app.core.key_service import (
     disable_key_by_id,
     get_key_plain_by_id,
 )
+from app.engine.repo_keys import db_get_key_by_id
+from app.engine.repo_users import db_get_keys_by_user_id
 
 router = APIRouter()
 
@@ -41,6 +43,11 @@ class UpdateKeyRequest(BaseModel):
 
 class DisableKeyRequest(BaseModel):
     key_id: int
+
+
+class CreateAccountTokenRequest(BaseModel):
+    name: str
+    expires_days: int = 365
 
 
 # ─── Admin routes ─────────────────────────────────────────────────────────────
@@ -124,6 +131,20 @@ async def reveal_api_key(key_id: int, request: Request):
 async def get_my_key(request: Request):
     """Get the current user's key information (any authenticated user)."""
     auth_user = require_auth(request)
+    if auth_user.get("auth_type") == "session":
+        role = auth_user.get("role", "user")
+        org_id = auth_user.get("org_id") or "default"
+        key_prefix = auth_user.get("key_prefix", "")
+        return {
+            "name": auth_user.get("name"),
+            "email": auth_user.get("email"),
+            "role": role,
+            "org_id": org_id,
+            "is_org_owner": False if role == "admin" else False,
+            "created_at": auth_user.get("created_at"),
+            "expires_at": auth_user.get("expires_at"),
+            "key_preview": key_prefix + "...",
+        }
     role = auth_user.get("role", "user")
     org_id = auth_user.get("org_id") or "default"
     key_prefix = auth_user.get("key_prefix", "")
@@ -142,6 +163,73 @@ async def get_my_key(request: Request):
         "expires_at": auth_user.get("expires_at"),
         "key_preview": key_prefix + "...",
     }
+
+
+@router.get("/account/tokens", summary="List my API tokens", tags=["Keys"])
+async def list_my_tokens(request: Request):
+    """List API tokens owned by the current web account."""
+    auth_user = require_auth(request)
+    user_id = auth_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Account token management requires web login")
+    rows = db_get_keys_by_user_id(int(user_id))
+    return {
+        "total": len(rows),
+        "tokens": [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "role": row.get("role", "user"),
+                "org_id": row.get("org_id", "default"),
+                "enabled": bool(row.get("enabled", True)),
+                "created_at": row.get("created_at"),
+                "expires_at": row.get("expires_at"),
+                "key_preview": row.get("key_prefix", "") + "...",
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/account/tokens", summary="Create my API token", tags=["Keys"])
+async def create_my_token(body: CreateAccountTokenRequest, request: Request):
+    """Create an API token owned by the current web account. Full token is returned once."""
+    auth_user = require_auth(request)
+    user_id = auth_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Account token management requires web login")
+    token_data = add_key(
+        name=body.name,
+        role=auth_user.get("role", "user"),
+        expires_days=body.expires_days,
+        org_id=auth_user.get("org_id") or "default",
+        email=None,
+        user_id=int(user_id),
+    )
+    return {
+        "message": "API token created successfully. Save it now; it will not be shown again.",
+        "id": token_data["id"],
+        "key": token_data["key"],
+        "name": token_data["name"],
+        "role": token_data["role"],
+        "org_id": token_data["org_id"],
+        "created_at": token_data["created_at"],
+        "expires_at": token_data["expires_at"],
+    }
+
+
+@router.post("/account/tokens/{token_id}/disable", summary="Disable my API token", tags=["Keys"])
+async def disable_my_token(token_id: int, request: Request):
+    """Disable an API token owned by the current web account."""
+    auth_user = require_auth(request)
+    user_id = auth_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Account token management requires web login")
+    row = db_get_key_by_id(token_id)
+    if not row or row.get("user_id") != int(user_id):
+        raise HTTPException(status_code=404, detail="API token not found")
+    disable_key_by_id(token_id)
+    return {"message": "API token disabled"}
 
 
 @router.post("/keys/rotate", summary="Rotate my API key", tags=["Keys"])

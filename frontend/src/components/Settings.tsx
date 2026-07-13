@@ -1,24 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  KeyIcon,
   ArrowPathIcon,
-  ClipboardIcon,
   CheckIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  ExclamationTriangleIcon,
+  ClipboardIcon,
+  KeyIcon,
+  PlusIcon,
+  TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import {
-  getApiKey,
-  setApiKey,
-  clearApiKey,
-  getMyKeyInfo,
-  rotateMyKey,
-  registerTokenByEmail,
-  recoverTokenByEmail,
+  AccountTokenInfo,
   KeyInfo,
+  clearSessionToken,
+  createAccountToken,
+  disableAccountToken,
+  forgotPassword,
+  getMyKeyInfo,
+  getSessionToken,
+  listAccountTokens,
+  loginAccount,
+  logoutAccount,
+  registerAccount,
+  resetPassword,
+  verifyEmail,
 } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
 
@@ -26,63 +31,159 @@ interface SettingsProps {
   onClose: () => void;
 }
 
+type AuthMode = 'login' | 'register' | 'forgot' | 'reset' | 'verify';
+
 export default function Settings({ onClose }: SettingsProps) {
   const dialogRef = useModalA11y(onClose);
-  const [apiKey, setApiKeyState] = useState(getApiKey());
-  const [showApiKey, setShowApiKey] = useState(true);
-  const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
-  const [newKey, setNewKey] = useState<string | null>(null);
-  const [isRotating, setIsRotating] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const params = new URLSearchParams(window.location.search);
+  const initialResetToken = params.get('reset_token') || '';
+  const initialVerifyToken = params.get('verify_token') || '';
+  const [mode, setMode] = useState<AuthMode>(initialVerifyToken ? 'verify' : initialResetToken ? 'reset' : 'login');
   const [email, setEmail] = useState('');
-  const [emailStatus, setEmailStatus] = useState<string | null>(null);
-  const [isEmailRequesting, setIsEmailRequesting] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetToken] = useState(initialResetToken);
+  const [verifyToken] = useState(initialVerifyToken);
+  const [keyInfo, setKeyInfo] = useState<KeyInfo | null>(null);
+  const [tokens, setTokens] = useState<AccountTokenInfo[]>([]);
+  const [tokenName, setTokenName] = useState('default-api-token');
+  const [newApiToken, setNewApiToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const signedIn = Boolean(getSessionToken() && keyInfo);
 
   useEffect(() => {
-    if (apiKey) {
-      fetchKeyInfo();
+    if (getSessionToken()) {
+      refreshAccount();
+    } else if (verifyToken) {
+      handleVerifyEmail();
     }
-  }, [apiKey]);
+  }, []);
 
-  const fetchKeyInfo = async () => {
+  useEffect(() => {
+    setPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setStatus(null);
+    setError(null);
+  }, [mode]);
+
+  const handleVerifyEmail = async () => {
+    setLoading(true);
+    setError(null);
+    setStatus(null);
     try {
-      const info = await getMyKeyInfo();
+      await verifyEmail(verifyToken);
+      await refreshAccount();
+      setStatus('Email activated. You are signed in.');
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to activate email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshAccount = async () => {
+    try {
+      const [info, tokenList] = await Promise.all([getMyKeyInfo(), listAccountTokens()]);
       setKeyInfo(info);
+      setTokens(tokenList.tokens || []);
       setError(null);
     } catch {
       setKeyInfo(null);
+      setTokens([]);
     }
   };
 
-  const handleSaveKey = () => {
-    setApiKey(apiKey);
-    setApiKeyState(apiKey);
+  const handleAuth = async () => {
+    setLoading(true);
     setError(null);
-    fetchKeyInfo();
+    setStatus(null);
+    try {
+      if (mode === 'login') {
+        await loginAccount({ email, password });
+        await refreshAccount();
+        setStatus('Signed in.');
+      } else if (mode === 'register') {
+        const result = await registerAccount({ email, password, name });
+        if (result.email_sent) {
+          setStatus(`Account created. Activation email sent to ${result.email}.`);
+        } else {
+          setError(`Account created, but activation email was not sent: ${result.delivery_detail}`);
+        }
+      } else if (mode === 'forgot') {
+        const result = await forgotPassword(email);
+        if (result.email_sent) {
+          setStatus(`Password reset email sent to ${result.email}.`);
+        } else {
+          setError(`Password reset email was not sent: ${result.delivery_detail}`);
+        }
+      } else if (mode === 'reset') {
+        if (newPassword !== confirmPassword) {
+          setError('Passwords do not match');
+          return;
+        }
+        await resetPassword(resetToken, newPassword);
+        setStatus('Password reset. Sign in with the new password.');
+        setPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setMode('login');
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Request failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleClearKey = () => {
-    clearApiKey();
-    setApiKeyState('');
-    setKeyInfo(null);
-    setNewKey(null);
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      await logoutAccount();
+    } catch {
+      clearSessionToken();
+    } finally {
+      setKeyInfo(null);
+      setTokens([]);
+      setNewApiToken(null);
+      setLoading(false);
+    }
   };
 
-  const handleRotate = async () => {
-    setIsRotating(true);
+  const handleCreateToken = async () => {
+    setLoading(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const result = await createAccountToken({ name: tokenName || 'api-token', expires_days: 365 });
+      setNewApiToken(result.key);
+      setStatus('API token created. Save it now; it will only be shown once.');
+      await refreshAccount();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to create API token');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisableToken = async (tokenId: number) => {
+    setLoading(true);
     setError(null);
     try {
-      const result = await rotateMyKey();
-      setNewKey(result.new_key);
-      setApiKeyState(result.new_key);
-      fetchKeyInfo();
-      setShowConfirm(false);
+      await disableAccountToken(tokenId);
+      await refreshAccount();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to rotate key');
+      setError(err.response?.data?.detail || 'Failed to disable API token');
     } finally {
-      setIsRotating(false);
+      setLoading(false);
     }
   };
 
@@ -91,39 +192,6 @@ export default function Settings({ onClose }: SettingsProps) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const handleEmailToken = async (mode: 'register' | 'recover') => {
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setError('Email is required');
-      return;
-    }
-    setIsEmailRequesting(true);
-    setError(null);
-    setEmailStatus(null);
-    try {
-      const result = mode === 'register'
-        ? await registerTokenByEmail(trimmed)
-        : await recoverTokenByEmail(trimmed);
-      if (result.key) {
-        setApiKeyState(result.key);
-        setEmailStatus('Token saved to this browser.');
-        await fetchKeyInfo();
-      } else if (result.email_sent) {
-        setEmailStatus(`Token email sent to ${result.email}.`);
-      } else {
-        setEmailStatus(result.delivery_detail || 'Token was created, but email delivery is not configured.');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to request token by email');
-    } finally {
-      setIsEmailRequesting(false);
-    }
-  };
-
-  const maskedKey = apiKey
-    ? apiKey.substring(0, 8) + '•'.repeat(Math.max(0, apiKey.length - 12)) + apiKey.slice(-4)
-    : '';
 
   return (
     <motion.div
@@ -137,262 +205,256 @@ export default function Settings({ onClose }: SettingsProps) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="API Key Settings"
+        aria-label="Account"
         tabIndex={-1}
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 outline-none"
+        className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 outline-none max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-suse-green-50 rounded-lg">
               <KeyIcon className="w-6 h-6 text-suse-green" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900">API Key Settings</h2>
+            <h2 className="text-xl font-bold text-gray-900">{signedIn ? 'Account' : 'Sign in'}</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 transition-colors">
             <XMarkIcon className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        {/* Key Input */}
-        <div className="space-y-4">
-          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">Register or recover by email</h3>
-              <p className="text-xs text-gray-500 mt-1">
-                Enter your email. The service will send your user token to that address.
-              </p>
+        {!signedIn ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1">
+              {(mode === 'reset' ? (['reset'] as AuthMode[]) : mode === 'verify' ? (['verify'] as AuthMode[]) : (['login', 'register', 'forgot'] as AuthMode[])).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => {
+                    if (item !== 'reset') setMode(item);
+                  }}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${mode === item ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  {item === 'login' ? 'Login' : item === 'register' ? 'Register' : item === 'forgot' ? 'Forgot password' : item === 'verify' ? 'Activate email' : 'Set new password'}
+                </button>
+              ))}
             </div>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className="w-full px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400 caret-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none transition-all text-sm"
-              style={{ WebkitTextFillColor: '#111827' }}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleEmailToken('register')}
-                disabled={isEmailRequesting}
-                className="px-4 py-2.5 bg-suse-green text-white rounded-lg hover:bg-suse-green/90 transition-colors text-sm font-medium disabled:opacity-50"
-              >
-                Register
-              </button>
-              <button
-                type="button"
-                onClick={() => handleEmailToken('recover')}
-                disabled={isEmailRequesting}
-                className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium disabled:opacity-50"
-              >
-                Recover
-              </button>
-            </div>
-            {emailStatus && (
-              <p className="text-xs text-gray-600">{emailStatus}</p>
-            )}
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              API Key
-            </label>
-            <div className="flex space-x-2">
+            {mode !== 'reset' && (
               <input
-                type={showApiKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKeyState(e.target.value)}
-                placeholder="dms_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                type="email"
+                name={`dms-${mode}-email`}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email address"
+                autoComplete="off"
                 autoCapitalize="none"
                 autoCorrect="off"
-                spellCheck={false}
-                className="flex-1 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400 caret-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none transition-all text-sm font-mono"
-                style={{ WebkitTextFillColor: '#111827' }}
+                className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none text-sm"
               />
-              <button
-                type="button"
-                onClick={() => setShowApiKey((value) => !value)}
-                className="px-3 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
-                title={showApiKey ? 'Hide API key' : 'Show API key'}
-              >
-                {showApiKey ? (
-                  <EyeSlashIcon className="w-5 h-5" />
-                ) : (
-                  <EyeIcon className="w-5 h-5" />
-                )}
-              </button>
-              <button
-                onClick={handleSaveKey}
-                className="px-4 py-2.5 bg-suse-green text-white rounded-lg hover:bg-suse-green/90 transition-colors text-sm font-medium"
-              >
-                Save
-              </button>
-              {apiKey && (
-                <button
-                  onClick={handleClearKey}
-                  className="px-3 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Key Info */}
-          <AnimatePresence>
-            {keyInfo && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="p-4 bg-gray-50 rounded-xl space-y-2"
-              >
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-500">Owner:</span>{' '}
-                    <span className="font-medium text-gray-900">{keyInfo.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Role:</span>{' '}
-                    <span className={`font-medium ${keyInfo.role === 'admin' ? 'text-amber-600' : 'text-gray-900'}`}>
-                      {keyInfo.role}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Created:</span>{' '}
-                    <span className="font-medium text-gray-900">{keyInfo.created_at}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Expires:</span>{' '}
-                    <span className="font-medium text-gray-900">{keyInfo.expires_at}</span>
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-gray-200">
-                  <span className="text-xs text-gray-400 font-mono">{maskedKey}</span>
-                </div>
-              </motion.div>
             )}
-          </AnimatePresence>
+            {mode === 'register' && (
+              <input
+                type="text"
+                name="dms-display-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Display name"
+                autoComplete="off"
+                className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none text-sm"
+              />
+            )}
+            {(mode === 'login' || mode === 'register') && (
+              <input
+                type="password"
+                name={`dms-${mode}-password`}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="off"
+                className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none text-sm"
+              />
+            )}
+            {mode === 'reset' && (
+              <>
+                <p className="text-sm text-gray-600">
+                  Enter a new password for your account.
+                </p>
+                <input
+                  type="password"
+                  name="dms-new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password"
+                  autoComplete="new-password"
+                  className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none text-sm"
+                />
+                <input
+                  type="password"
+                  name="dms-confirm-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  className="w-full px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none text-sm"
+                />
+              </>
+            )}
+            {mode === 'verify' && (
+              <p className="text-sm text-gray-600">
+                Activating your email address...
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleAuth}
+              disabled={loading || mode === 'verify'}
+              className="w-full px-4 py-2.5 bg-suse-green text-white rounded-lg hover:bg-suse-green/90 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {loading ? 'Working...' : mode === 'login' ? 'Login' : mode === 'register' ? 'Create account' : mode === 'forgot' ? 'Send reset email' : mode === 'verify' ? 'Activating...' : 'Reset password'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Name:</span>{' '}
+                  <span className="font-medium text-gray-900">{keyInfo?.name}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Email:</span>{' '}
+                  <span className="font-medium text-gray-900">{keyInfo?.email}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Role:</span>{' '}
+                  <span className="font-medium text-gray-900">{keyInfo?.role}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Org:</span>{' '}
+                  <span className="font-medium text-gray-900">{keyInfo?.org_id}</span>
+                </div>
+              </div>
+            </div>
 
-          {/* New Key Display */}
-          <AnimatePresence>
-            {newKey && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="p-4 bg-green-50 border border-green-200 rounded-xl"
-              >
-                <div className="flex items-start space-x-2">
-                  <CheckIcon className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-green-800">New key generated!</p>
-                    <div className="mt-2 flex items-center space-x-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">API Tokens</h3>
+                <button
+                  type="button"
+                  onClick={refreshAccount}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  title="Refresh"
+                >
+                  <ArrowPathIcon className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  name="dms-token-name"
+                  value={tokenName}
+                  onChange={(e) => setTokenName(e.target.value)}
+                  placeholder="Token name"
+                  autoComplete="off"
+                  className="flex-1 px-4 py-2.5 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateToken}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-suse-green text-white rounded-lg hover:bg-suse-green/90 transition-colors text-sm font-medium disabled:opacity-50"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  <span>Create</span>
+                </button>
+              </div>
+
+              <AnimatePresence>
+                {newApiToken && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="p-3 bg-green-50 border border-green-200 rounded-lg"
+                  >
+                    <p className="text-sm font-medium text-green-800">New API token</p>
+                    <div className="mt-2 flex items-center gap-2">
                       <code className="flex-1 text-xs bg-white px-3 py-2 rounded border font-mono text-gray-800 break-all">
-                        {newKey}
+                        {newApiToken}
                       </code>
                       <button
-                        onClick={() => handleCopy(newKey)}
-                        className="p-2 rounded-lg hover:bg-green-100 transition-colors flex-shrink-0"
-                        title="Copy to clipboard"
+                        type="button"
+                        onClick={() => handleCopy(newApiToken)}
+                        className="p-2 rounded-lg hover:bg-green-100 transition-colors"
+                        title="Copy"
                       >
-                        {copied ? (
-                          <CheckIcon className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <ClipboardIcon className="w-4 h-4 text-green-600" />
-                        )}
+                        {copied ? <CheckIcon className="w-4 h-4 text-green-700" /> : <ClipboardIcon className="w-4 h-4 text-green-700" />}
                       </button>
                     </div>
-                    <p className="mt-2 text-xs text-green-700">
-                      ⚠️ Save this key now — it will not be shown again!
-                      The key has been auto-saved to your browser.
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-          {/* Error */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
-              >
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Rotate Button */}
-          {keyInfo && (
-            <div className="pt-2">
-              {!showConfirm ? (
-                <button
-                  onClick={() => setShowConfirm(true)}
-                  className="flex items-center space-x-2 px-4 py-2.5 border-2 border-amber-400 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors text-sm font-medium w-full justify-center"
-                >
-                  <ArrowPathIcon className="w-4 h-4" />
-                  <span>Rotate My API Key</span>
-                </button>
-              ) : (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
-                  <div className="flex items-start space-x-2">
-                    <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-amber-800">Are you sure?</p>
-                      <p className="text-xs text-amber-700 mt-1">
-                        Your current key will be permanently disabled. A new key will be generated
-                        and auto-saved to your browser. Any other clients using the old key will stop working.
-                      </p>
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-200">
+                {tokens.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-500">No API tokens yet.</div>
+                ) : tokens.map((token) => (
+                  <div key={token.id} className="p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{token.name}</p>
+                      <p className="text-xs text-gray-500 font-mono">{token.key_preview} | {token.enabled ? 'active' : 'disabled'} | expires {token.expires_at}</p>
                     </div>
+                    {token.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => handleDisableToken(token.id)}
+                        className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                        title="Disable token"
+                      >
+                        <TrashIcon className="w-4 h-4 text-red-600" />
+                      </button>
+                    )}
                   </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={handleRotate}
-                      disabled={isRotating}
-                      className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-sm font-medium disabled:opacity-50"
-                    >
-                      {isRotating ? (
-                        <>
-                          <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                          <span>Rotating...</span>
-                        </>
-                      ) : (
-                        <span>Yes, Rotate Key</span>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowConfirm(false)}
-                      className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
-          )}
 
-          {/* Help Text */}
-          <p className="text-xs text-gray-400 mt-4">
-            Don't have a key? Ask your admin or run: <code className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">python generate_key.py create --name "Your Name"</code>
-          </p>
-        </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loading}
+              className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              Logout
+            </button>
+          </div>
+        )}
+
+        <AnimatePresence>
+          {status && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm break-all"
+            >
+              {status}
+            </motion.div>
+          )}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
+            >
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   );
