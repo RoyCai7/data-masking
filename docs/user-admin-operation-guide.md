@@ -123,7 +123,7 @@ X-Session-ID: 5f6fd5de-7d1f-4e6f-a9f5-8fa4a8bb4b2f
 
 | 接口类型 | 是否需要 `X-API-Key` | 典型接口 |
 |------|------|------|
-| 公共接口 | 否 | `/api/v1/status`、`/api/v1/rules`、`/api/v1/session` |
+| 公共接口 | 否 | `/api/v1/status`、`/api/v1/rules`、`/api/v1/session`、`/api/v1/email-token/register`、`/api/v1/email-token/recover` |
 | 普通受保护接口 | 是 | `/api/v1/mask`、`/api/v1/task/{task_id}`、`/api/v1/tasks`、`/api/v1/download/{task_id}`、`/api/v1/report/{task_id}`、`/api/v1/keys/me`、`/api/v1/keys/rotate` |
 | 管理员接口 | 是，且必须为 admin | `/api/v1/keys`、`/api/v1/keys/disable`、`/api/v1/rules` 的增删改、`/api/v1/rules-import`、`/api/v1/rules-export`、`/api/v1/rules/changelog` |
 
@@ -221,13 +221,28 @@ localhost,127.0.0.1,my-test-domain
 
 ---
 
-## 5.2 Web 方式：设置自己的 API Key
+## 5.2 Web 方式：通过邮箱获取或找回 Token
 
 页面右上角点击：
 
 - `Key`
 
 在弹窗中：
+
+1. 输入自己的邮箱
+2. 首次使用点击 `Register`
+3. 忘记 token 时点击 `Recover`
+4. 系统会把 user token 发送到该邮箱
+5. 收到 token 后粘贴到 API Key 输入框并点击 `Save`
+
+说明：
+
+- 邮箱是唯一标识，同一个邮箱对应同一个 user token
+- 邮箱方式只会创建普通 user token，不会创建 admin token
+- 如果后端没有配置 SMTP，界面会提示邮件未发送，需要管理员配置邮件服务
+- SMTP 相关环境变量：`DMS_SMTP_HOST`、`DMS_SMTP_PORT`、`DMS_SMTP_USER`、`DMS_SMTP_PASSWORD`、`DMS_SMTP_FROM`
+
+也可以由管理员直接分配 token。此时在弹窗中：
 
 1. 粘贴 API Key
 2. 点击 `Save`

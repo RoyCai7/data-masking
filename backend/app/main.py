@@ -14,7 +14,7 @@ import os
 import time
 from datetime import datetime, timezone
 
-from app.api import mask, status, rules, llm, orgs, keys
+from app.api import mask, status, rules, llm, orgs, keys, email_token
 from app.core.executor import shutdown_executor
 from app.core.auth import APIKeyMiddleware, AUTH_ENABLED
 from app.core.session import cleanup_expired_sessions
@@ -150,6 +150,7 @@ async def log_requests(request: Request, call_next):
 app.include_router(rules.router, prefix="/api/v1", tags=["Rules"])
 app.include_router(orgs.router, prefix="/api/v1", tags=["Organizations"])
 app.include_router(keys.router, prefix="/api/v1", tags=["Keys"])
+app.include_router(email_token.router, prefix="/api/v1", tags=["Email Token"])
 app.include_router(llm.router, prefix="/api/v1", tags=["LLM"])
 app.include_router(mask.router, prefix="/api/v1", tags=["Masking"])
 app.include_router(status.router, prefix="/api/v1", tags=["Status"])

@@ -378,6 +378,15 @@ export interface RotateKeyResponse {
   warning: string;
 }
 
+export interface EmailTokenResponse {
+  message: string;
+  email: string;
+  created: boolean;
+  email_sent: boolean;
+  delivery_detail: string;
+  key?: string | null;
+}
+
 export const getMyKeyInfo = async (): Promise<KeyInfo> => {
   const response = await api.get('/keys/me');
   return response.data;
@@ -388,6 +397,22 @@ export const rotateMyKey = async (): Promise<RotateKeyResponse> => {
   // Auto-update stored key
   if (response.data.new_key) {
     setApiKey(response.data.new_key);
+  }
+  return response.data;
+};
+
+export const registerTokenByEmail = async (email: string): Promise<EmailTokenResponse> => {
+  const response = await api.post('/email-token/register', { email });
+  if (response.data.key) {
+    setApiKey(response.data.key);
+  }
+  return response.data;
+};
+
+export const recoverTokenByEmail = async (email: string): Promise<EmailTokenResponse> => {
+  const response = await api.post('/email-token/recover', { email });
+  if (response.data.key) {
+    setApiKey(response.data.key);
   }
   return response.data;
 };

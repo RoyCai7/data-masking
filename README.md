@@ -97,9 +97,14 @@ All protected endpoints require an API key in the request header:
 X-API-Key: dms_your_api_key_here
 ```
 
-> Public endpoints (no key required): `GET /status`, `GET /rules`, `GET /session`
+> Public endpoints (no key required): `GET /status`, `GET /rules`, `POST /session`,
+> `POST /email-token/register`, `POST /email-token/recover`
 >
 > Generate a key: `python generate_key.py` — or via Admin Console → Keys.
+
+Web users can register or recover a user token by email from the **Key** dialog.
+Configure SMTP with `DMS_SMTP_HOST`, `DMS_SMTP_USER`, `DMS_SMTP_PASSWORD`, and
+`DMS_SMTP_FROM` so tokens are actually delivered by email.
 
 ---
 

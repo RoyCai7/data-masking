@@ -6,6 +6,8 @@ import uuid
 import re as _re
 import time
 import threading
+import os
+import tempfile
 from typing import Dict, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,8 +26,9 @@ _UUID_RE = _re.compile(
 # Session expiry time (2 hours)
 SESSION_EXPIRY_SECONDS = 7200
 
-# Storage directory
-STORAGE_DIR = Path("/tmp/masking-service")
+# Storage directory. Use the OS temp directory by default so Windows does not
+# try to create a Unix-style /tmp path.
+STORAGE_DIR = Path(os.getenv("DMS_STORAGE_DIR", str(Path(tempfile.gettempdir()) / "masking-service")))
 
 
 @dataclass

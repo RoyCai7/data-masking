@@ -17,11 +17,13 @@ from app.core.auth import _hash_key, generate_api_key
 from app.engine.repo_keys import (
     db_add_key,
     db_get_key_by_hash,
+    db_get_key_by_email,
     db_get_all_keys,
     db_update_key,
     db_update_key_by_id,
     db_disable_key,
     db_disable_key_by_id,
+    db_clear_key_email,
     db_get_key_plain_by_id,
 )
 
@@ -29,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def add_key(name: str, role: str = "user", expires_days: int = 365,
-            org_id: str = "default") -> dict:
+            org_id: str = "default", email: Optional[str] = None) -> dict:
     """
     Create a new API key.
     Stores only the SHA-256 hash; returns the plaintext key ONCE.
@@ -50,12 +52,14 @@ def add_key(name: str, role: str = "user", expires_days: int = 365,
         org_id=org_id,
         expires_at=expires_at,
         key_plain=raw_key,
+        email=email,
     )
     logger.info(f"API key created for '{name}' (role={role}, org={org_id})")
     return {
         "id": row.get("id"),
         "key": raw_key,
         "key_prefix": key_prefix,
+        "email": email,
         "name": name,
         "role": role,
         "org_id": org_id,
@@ -75,6 +79,8 @@ def rotate_key(old_api_key: str) -> Optional[dict]:
     if not old_entry:
         return None
     db_disable_key(old_hash)
+    if old_entry.get("email"):
+        db_clear_key_email(old_hash)
 
     expires_days = 365  # fallback
     expires_at_str = old_entry.get("expires_at")
@@ -90,6 +96,7 @@ def rotate_key(old_api_key: str) -> Optional[dict]:
         role=old_entry.get("role", "user"),
         org_id=old_entry.get("org_id", "default"),
         expires_days=expires_days,
+        email=old_entry.get("email"),
     )
     logger.info(f"API key rotated for '{old_entry['name']}'")
     return new_key_data
@@ -109,6 +116,38 @@ def disable_key(api_key: str) -> bool:
 def list_keys() -> list:
     """Return all keys (no hashes, no plaintext)."""
     return db_get_all_keys()
+
+
+def get_or_create_user_key_by_email(email: str, expires_days: int = 365) -> dict:
+    """
+    Return the active user key bound to an email, creating one if needed.
+
+    Email self-service never creates admin keys.
+    """
+    existing = db_get_key_by_email(email)
+    if existing and existing.get("enabled", True):
+        return {
+            "id": existing.get("id"),
+            "key": existing.get("key_plain"),
+            "key_prefix": existing.get("key_prefix"),
+            "email": existing.get("email"),
+            "name": existing.get("name"),
+            "role": existing.get("role", "user"),
+            "org_id": existing.get("org_id", "default"),
+            "created_at": existing.get("created_at"),
+            "expires_at": existing.get("expires_at"),
+            "enabled": bool(existing.get("enabled", True)),
+            "created": False,
+        }
+    created = add_key(
+        name=email,
+        role="user",
+        expires_days=expires_days,
+        org_id="default",
+        email=email,
+    )
+    created["created"] = True
+    return created
 
 
 # Re-export lower-level by-id helpers so callers only need one import

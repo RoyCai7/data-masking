@@ -16,6 +16,8 @@ import {
   clearApiKey,
   getMyKeyInfo,
   rotateMyKey,
+  registerTokenByEmail,
+  recoverTokenByEmail,
   KeyInfo,
 } from '../services/api';
 import { useModalA11y } from '../hooks/useModalA11y';
@@ -33,6 +35,9 @@ export default function Settings({ onClose }: SettingsProps) {
   const [isRotating, setIsRotating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [emailStatus, setEmailStatus] = useState<string | null>(null);
+  const [isEmailRequesting, setIsEmailRequesting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
@@ -87,6 +92,35 @@ export default function Settings({ onClose }: SettingsProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleEmailToken = async (mode: 'register' | 'recover') => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError('Email is required');
+      return;
+    }
+    setIsEmailRequesting(true);
+    setError(null);
+    setEmailStatus(null);
+    try {
+      const result = mode === 'register'
+        ? await registerTokenByEmail(trimmed)
+        : await recoverTokenByEmail(trimmed);
+      if (result.key) {
+        setApiKeyState(result.key);
+        setEmailStatus('Token saved to this browser.');
+        await fetchKeyInfo();
+      } else if (result.email_sent) {
+        setEmailStatus(`Token email sent to ${result.email}.`);
+      } else {
+        setEmailStatus(result.delivery_detail || 'Token was created, but email delivery is not configured.');
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to request token by email');
+    } finally {
+      setIsEmailRequesting(false);
+    }
+  };
+
   const maskedKey = apiKey
     ? apiKey.substring(0, 8) + '•'.repeat(Math.max(0, apiKey.length - 12)) + apiKey.slice(-4)
     : '';
@@ -129,6 +163,47 @@ export default function Settings({ onClose }: SettingsProps) {
 
         {/* Key Input */}
         <div className="space-y-4">
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Register or recover by email</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Enter your email. The service will send your user token to that address.
+              </p>
+            </div>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-full px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400 caret-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-suse-green focus:border-suse-green outline-none transition-all text-sm"
+              style={{ WebkitTextFillColor: '#111827' }}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleEmailToken('register')}
+                disabled={isEmailRequesting}
+                className="px-4 py-2.5 bg-suse-green text-white rounded-lg hover:bg-suse-green/90 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                Register
+              </button>
+              <button
+                type="button"
+                onClick={() => handleEmailToken('recover')}
+                disabled={isEmailRequesting}
+                className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                Recover
+              </button>
+            </div>
+            {emailStatus && (
+              <p className="text-xs text-gray-600">{emailStatus}</p>
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               API Key

@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     key_hash   TEXT NOT NULL UNIQUE,
     key_prefix TEXT NOT NULL,
     key_plain  TEXT,
+    email      TEXT,
     name       TEXT NOT NULL,
     role       TEXT NOT NULL DEFAULT 'user',
     org_id     TEXT NOT NULL DEFAULT 'default',
@@ -148,6 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_changelog_rule_id
 -- Suggestions: filter by status (pending/approved/rejected)
 CREATE INDEX IF NOT EXISTS idx_suggestions_status
     ON rule_suggestions (status, submitted_at);
+
 """
 
 
@@ -361,6 +363,22 @@ def init_db():
         conn.commit()
         _mark_migration(conn, 15, "disable SUSE-specific built-in rules")
         logger.info(f"Migration 15: disabled {result.rowcount} SUSE-specific built-in rules (will not re-run)")
+
+    # 16. Add optional email binding to API keys for self-service token delivery
+    try:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN email TEXT")
+        conn.commit()
+        logger.info("Migration 16: added 'email' column to api_keys")
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_email "
+            "ON api_keys (email) WHERE email IS NOT NULL AND email != ''"
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Migration 16: email index creation failed: {e}")
 
     logger.info(f"Rules database initialized at {DB_PATH}")
 

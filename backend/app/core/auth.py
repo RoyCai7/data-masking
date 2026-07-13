@@ -55,6 +55,8 @@ PUBLIC_PATHS = frozenset({
     "/api/v1/status",
     "/api/v1/rules",
     "/api/v1/session",
+    "/api/v1/email-token/register",
+    "/api/v1/email-token/recover",
     "/docs",
     "/redoc",
     "/openapi.json",
